@@ -4,12 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "postmeet"
-version = "0.1.0"
+version = "1.0.0"
 description = "Evidence-bound post-meeting extraction and YOOtheme page hydration"
+readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "PostMeet Contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+asr = ["faster-whisper>=1.1,<2", "yt-dlp>=2025.1,<2027"]
+web = ["beautifulsoup4>=4.12,<5", "requests>=2.32,<3"]
+dev = ["pytest>=8,<9"]
+all = ["faster-whisper>=1.1,<2", "yt-dlp>=2025.1,<2027", "beautifulsoup4>=4.12,<5", "requests>=2.32,<3", "pytest>=8,<9"]
 
 [project.scripts]
 postmeet = "postmeet.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["postmeet*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
