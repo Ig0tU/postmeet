@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "postmeet"
+version = "0.1.0"
+description = "Evidence-bound post-meeting extraction and YOOtheme page hydration"
+requires-python = ">=3.10"
+
+[project.scripts]
+postmeet = "postmeet.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["postmeet*"]
