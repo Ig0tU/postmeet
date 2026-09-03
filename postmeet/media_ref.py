@@ -99,8 +99,20 @@ def _guard_url(url: str, site_url: str = "") -> None:
         raise ValueError("That media URL resolves to a private/local network address.")
 
 
+def normalize_url(url: str) -> str:
+    """Normalize malformed YouTube or media URLs."""
+    u = (url or "").strip()
+    m_yt_bare = re.match(r"^https?://(?:www\.)?youtube\.com/([A-Za-z0-9_-]{11})(?:[/?#]|$)", u)
+    if m_yt_bare:
+        return f"https://www.youtube.com/watch?v={m_yt_bare.group(1)}"
+    m_yt_short = re.match(r"^https?://youtu\.be/([A-Za-z0-9_-]{11})(?:[/?#]|$)", u)
+    if m_yt_short:
+        return f"https://www.youtube.com/watch?v={m_yt_short.group(1)}"
+    return u
+
+
 def normalize(source: str, *, site_url: str = "", media_root: str = "") -> str:
-    s = (source or "").strip()
+    s = normalize_url(source)
     if not s:
         raise ValueError("A meeting recording or page URL is required.")
     if _is_http(s):

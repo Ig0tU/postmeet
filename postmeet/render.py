@@ -30,10 +30,6 @@ def _format_time(sec: int) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _by_type(payload: Dict[str, Any], kind: str) -> List[dict]:
-    return [i for i in payload.get("items") or [] if i.get("record_type") == kind]
-
-
 def _embed_player(url: str, poster: str = "", captions_url: str = "") -> str:
     u = url or ""
     vid = ""
@@ -44,18 +40,18 @@ def _embed_player(url: str, poster: str = "", captions_url: str = "") -> str:
 
     if vid:
         return (f'<div class="xs-ml-player" data-xs-ml-player data-xs-ml-provider="youtube">'
-                f'<iframe id="player" class="uk-width-1-1" style="aspect-ratio:16/9;border:0"'
+                f'<iframe id="player" class="uk-width-1-1" style="aspect-ratio:16/9;border:0;width:100%;border-radius:8px;"'
                 f' src="https://www.youtube.com/embed/{e(vid)}?enablejsapi=1"'
-                f' allow="accelerometer;autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe>'
+                f' allow="accelerometer;autoplay;encrypted-media;gyroscope;picture-in-picture" allowfullscreen></iframe>'
                 f'</div>')
 
     track_tag = f'<track kind="captions" src="{e(captions_url)}" srclang="en" label="Captions" default>' if captions_url else ""
     poster_attr = f' poster="{e(poster)}"' if poster else ""
     src = e(u) if u else "#"
     return (f'<div class="xs-ml-player" data-xs-ml-player data-xs-ml-provider="native">'
-            f'<video id="player" controls preload="metadata"{poster_attr}>'
+            f'<video id="player" controls preload="metadata" style="width:100%;aspect-ratio:16/9;border-radius:8px;background:#000;"{poster_attr}>'
             f'<source src="{src}">{track_tag}'
-            f'Your browser cannot play this recording. <a href="{src}">Open recording</a>.'
+            f'Your browser does not support the video tag.'
             f'</video></div>')
 
 
@@ -95,7 +91,7 @@ def render(payload: Dict[str, Any]) -> str:
     chapters = [i for i in items if i.get("record_type") == "chapter"]
     resources = [i for i in items if i.get("record_type") == "resource"]
 
-    # Top-level vs child agenda items
+    # Top-level vs child agenda items (strictly max 1 level)
     top_map = {a.get("record_key"): a for a in agenda_all if not a.get("parent_key")}
     tops = list(top_map.values())
     children_by_parent: Dict[str, List[dict]] = {}
@@ -106,7 +102,6 @@ def render(payload: Dict[str, Any]) -> str:
             if pk in top_map:
                 children_by_parent.setdefault(pk, []).append(a)
             else:
-                # If parent is missing or is another child, keep at top level so nothing cascades
                 tops.append(a)
 
     # Render Chapters
@@ -173,7 +168,7 @@ def render(payload: Dict[str, Any]) -> str:
         if vote: outcome_parts.append(f'<p><strong>Vote:</strong> {e(vote)}</p>')
         outcome_html = f'<div class="xs-ml-outcome">{"".join(outcome_parts)}</div>' if outcome_parts else ""
 
-        # Strictly max 1 level of children (level 1 -> 2 only, never level 3+)
+        # Strictly max 1 level of children
         kids_html = ""
         if level < 2:
             kids = children_by_parent.get(k, [])
@@ -246,6 +241,167 @@ def render(payload: Dict[str, Any]) -> str:
 </li>''')
     resources_html = "\n".join(res_lis)
 
+    # Build xs-ml-config object
+    ch_config = []
+    for ch in chapters:
+        ch_k = ch.get("record_key") or "chapter"
+        st = _seconds(str(ch.get("start_time") or "0:00"))
+        ch_config.append({
+            "key": ch_k,
+            "title": ch.get("title") or "Chapter",
+            "start": st,
+            "end": st + 60,
+            "agendaKey": ch.get("agenda_key") or "",
+            "recordingKey": "recording"
+        })
+
+    provider = "youtube" if ("youtube.com" in rec_url or "youtu.be" in rec_url) else "native"
+    embed_url = ""
+    if provider == "youtube":
+        vid = ""
+        if "watch?v=" in rec_url: vid = rec_url.split("watch?v=")[1].split("&")[0]
+        elif "youtu.be/" in rec_url: vid = rec_url.split("youtu.be/")[1].split("?")[0]
+        embed_url = f"https://www.youtube.com/embed/{vid}?enablejsapi=1"
+
+    config_obj = {
+        "id": root_id,
+        "key": payload.get("meeting_key", "meeting"),
+        "media": {
+            "provider": provider,
+            "url": rec_url,
+            "embedUrl": embed_url,
+            "seekable": True,
+            "valid": bool(rec_url)
+        },
+        "chapters": ch_config,
+        "agendaKeys": [a.get("record_key") for a in agenda_all if a.get("record_key")],
+        "initialAgenda": agenda_all[0].get("record_key") if agenda_all else "",
+        "syncEnabled": True,
+        "followPlayback": True,
+        "scrollActive": False,
+        "showSearch": True,
+        "showFilters": True,
+        "urlMode": "hash",
+        "urlParameter": f"meeting_{payload.get('meeting_key', 'meeting')}",
+        "updateUrl": True,
+        "rememberPosition": "none",
+        "storageKey": f"patches-xs-meeting-lens-{payload.get('meeting_key', 'meeting')}",
+        "fingerprint": "postmeet-live",
+        "privacyMode": False,
+        "transitionDuration": 180
+    }
+    config_json_str = json.dumps(config_obj, separators=(',', ':'))
+
+    summary_block = f'<div class="xs-ml-summary">{e(summary)}</div>' if summary else ''
+    notice_block = f'<div class="xs-ml-notice"><strong>Public notice:</strong><br>{e(public_notice)}</div>' if public_notice else ''
+    accomm_block = f'<div class="xs-ml-accommodation"><strong>Accessibility and accommodations:</strong><br>{e(accommodation)}</div>' if accommodation else ''
+
+    resources_section = f'''<section class="xs-ml-section" id="{root_id}-resources">
+        <div class="xs-ml-section-heading">
+            <h2>Meeting resources</h2>
+            <span>{len(resources)} items</span>
+        </div>
+        <ul class="xs-ml-resources">{resources_html}</ul>
+    </section>''' if resources else ''
+
+    transcript_section = f'''<section class="xs-ml-section" id="{root_id}-transcript">
+        <div class="xs-ml-section-heading">
+            <h2>Transcript</h2>
+            <span>Auto</span>
+        </div>
+        <div class="xs-ml-transcript-text" lang="en">{e(transcript_text)}</div>
+    </section>''' if transcript_text else ''
+
+    media_links = []
+    if rec_url: media_links.append(f'<a href="{e(rec_url)}">Recording link</a>')
+    if captions_url: media_links.append(f'<a href="{e(captions_url)}">Captions</a>')
+    if transcript_url: media_links.append(f'<a href="{e(transcript_url)}">Transcript</a>')
+    media_links_html = f'<div class="xs-ml-media-links">{" ".join(media_links)}</div>' if media_links else ''
+
+    chapters_render = chapters_html if chapters_html else '<li class="uk-text-meta">No chapters defined.</li>'
+    player_html = _embed_player(rec_url, poster, captions_url)
+
+    inline_js = f"""
+{js_content}
+
+// Direct Instant Search & Seek Bindings
+document.addEventListener("DOMContentLoaded", function() {{
+    var root = document.querySelector('[data-xs-ml-root="{root_id}"]') || document.querySelector('.xs-meeting-lens');
+    if (!root) return;
+
+    var searchInput = root.querySelector('[data-xs-ml-search]');
+    var typeSelect = root.querySelector('[data-xs-ml-filter-type]');
+    var statusSelect = root.querySelector('[data-xs-ml-filter-status]');
+    var clearBtn = root.querySelector('[data-xs-ml-clear]');
+    var resultsEl = root.querySelector('[data-xs-ml-results]');
+    var records = root.querySelectorAll('[data-xs-ml-record]');
+
+    function filterRecords() {{
+        var query = (searchInput ? searchInput.value : "").trim().toLowerCase();
+        var typeVal = (typeSelect ? typeSelect.value : "").trim().toLowerCase();
+        var statusVal = (statusSelect ? statusSelect.value : "").trim().toLowerCase();
+        var count = 0;
+
+        records.forEach(function(rec) {{
+            var rType = (rec.getAttribute('data-xs-ml-type') || '').toLowerCase();
+            var rStatus = (rec.getAttribute('data-xs-ml-status') || '').toLowerCase();
+            var rSearch = (rec.getAttribute('data-xs-ml-search') || rec.textContent || '').toLowerCase();
+
+            var matchQ = !query || rSearch.indexOf(query) !== -1;
+            var matchT = !typeVal || rType === typeVal;
+            var matchS = !statusVal || rStatus === statusVal;
+
+            if (matchQ && matchT && matchS) {{
+                rec.style.display = "";
+                count++;
+            }} else {{
+                rec.style.display = "none";
+            }}
+        }});
+
+        if (resultsEl) {{
+            if (!query && !typeVal && !statusVal) {{
+                resultsEl.textContent = "";
+            }} else {{
+                resultsEl.textContent = count + " item" + (count === 1 ? "" : "s") + " matching";
+            }}
+        }}
+    }}
+
+    if (searchInput) searchInput.addEventListener('input', filterRecords);
+    if (typeSelect) typeSelect.addEventListener('change', filterRecords);
+    if (statusSelect) statusSelect.addEventListener('change', filterRecords);
+    if (clearBtn) {{
+        clearBtn.addEventListener('click', function() {{
+            if (searchInput) searchInput.value = "";
+            if (typeSelect) typeSelect.value = "";
+            if (statusSelect) statusSelect.value = "";
+            filterRecords();
+        }});
+    }}
+
+    // Video Seek Handlers
+    var video = root.querySelector('video#player');
+    var iframe = root.querySelector('iframe#player');
+    
+    root.querySelectorAll('[data-xs-ml-seek]').forEach(function(btn) {{
+        btn.addEventListener('click', function(e) {{
+            var sec = parseFloat(btn.getAttribute('data-xs-ml-seek') || '0');
+            if (video) {{
+                video.currentTime = sec;
+                video.play().catch(function(){{}});
+            }} else if (iframe && iframe.contentWindow) {{
+                iframe.contentWindow.postMessage(JSON.stringify({{
+                    event: "command",
+                    func: "seekTo",
+                    args: [sec, true]
+                }}), "*");
+            }}
+        }});
+    }});
+}});
+"""
+
     return f'''<!doctype html>
 <html lang="en">
 <head>
@@ -298,9 +454,9 @@ def render(payload: Dict[str, Any]) -> str:
                 </div>
             </dl>
 
-            {f'<div class="xs-ml-summary">{e(summary)}</div>' if summary else ''}
-            {f'<div class="xs-ml-notice"><strong>Public notice:</strong><br>{e(public_notice)}</div>' if public_notice else ''}
-            {f'<div class="xs-ml-accommodation"><strong>Accessibility and accommodations:</strong><br>{e(accommodation)}</div>' if accommodation else ''}
+            {summary_block}
+            {notice_block}
+            {accomm_block}
         </header>
 
         <!-- Search & Filter Toolbar -->
@@ -349,16 +505,11 @@ def render(payload: Dict[str, Any]) -> str:
                         </button>
                     </div>
 
-                    {_embed_player(rec_url, poster, captions_url)}
-
-                    <div class="xs-ml-media-links">
-                        {f'<a href="{e(rec_url)}">Recording link</a> ' if rec_url else ''}
-                        {f'<a href="{e(captions_url)}">Captions</a> ' if captions_url else ''}
-                        {f'<a href="{e(transcript_url)}">Transcript</a>' if transcript_url else ''}
-                    </div>
+                    {player_html}
+                    {media_links_html}
 
                     <ol class="xs-ml-chapters" aria-label="Recording chapters">
-                        {chapters_html if chapters_html else '<li class="uk-text-meta">No chapters defined.</li>'}
+                        {chapters_render}
                     </ol>
                 </section>
             </div>
@@ -375,23 +526,12 @@ def render(payload: Dict[str, Any]) -> str:
                     </ol>
                 </section>
 
-                {f'''<section class="xs-ml-section" id="{root_id}-resources">
-                    <div class="xs-ml-section-heading">
-                        <h2>Meeting resources</h2>
-                        <span>{len(resources)} items</span>
-                    </div>
-                    <ul class="xs-ml-resources">{resources_html}</ul>
-                </section>''' if resources else ''}
-
-                {f'''<section class="xs-ml-section" id="{root_id}-transcript">
-                    <div class="xs-ml-section-heading">
-                        <h2>Transcript</h2>
-                        <span>Auto</span>
-                    </div>
-                    <div class="xs-ml-transcript-text" lang="en">{e(transcript_text)}</div>
-                </section>''' if transcript_text else ''}
+                {resources_section}
+                {transcript_section}
             </div>
         </div>
+
+        <script type="application/json" data-xs-ml-config="{root_id}">{config_json_str}</script>
     </article>
   </div>
 </main>
@@ -399,7 +539,7 @@ def render(payload: Dict[str, Any]) -> str:
 <script src="https://cdn.jsdelivr.net/npm/uikit@3/dist/js/uikit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/uikit@3/dist/js/uikit-icons.min.js"></script>
 <script>
-{js_content}
+{inline_js}
 </script>
 </body>
 </html>'''

@@ -540,11 +540,67 @@ def main() -> int:
     else:
         Path(args.output).write_text(text, encoding="utf-8")
         print(f"wrote {args.output}", file=sys.stderr)
+def extract_speakers(cues: List[Cue], transcript_text: str = "") -> List[Dict[str, Any]]:
+    """Identify non-duplicating distinct speakers and counts from transcript cues."""
+    speakers_map: Dict[str, Dict[str, Any]] = {}
+    speaker_prefix = re.compile(
+        r"^(?:>>\s*)?(?:\[([^\]]+)\]|([A-Z][A-Za-z\s\.\-]{2,30}):|(SPEAKER[_\s]\d+):)", re.M
+    )
+
+    for t, line in cues:
+        m = speaker_prefix.search(line)
+        if m:
+            raw_label = (m.group(1) or m.group(2) or m.group(3)).strip()
+            label = clean(raw_label)
+            if label and label.lower() not in {"music", "applause", "inaudible", "laughter", "cheering"}:
+                spk_id = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+                if spk_id not in speakers_map:
+                    speakers_map[spk_id] = {
+                        "id": spk_id,
+                        "label": label,
+                        "count": 0,
+                        "sample": clean(line)[:120],
+                        "first_spoken": stamp(t),
+                    }
+                speakers_map[spk_id]["count"] += 1
+
+    if not speakers_map:
+        current_spk_idx = 1
+        last_t = 0.0
+        turn_counts: Dict[str, int] = {}
+        first_stamps: Dict[str, str] = {}
+        samples: Dict[str, str] = {}
+
+        for t, line in cues:
+            if ">>" in line or (t - last_t > 12.0 and last_t > 0):
+                current_spk_idx = ((current_spk_idx) % 4) + 1
+            spk_id = f"speaker-{current_spk_idx}"
+            turn_counts[spk_id] = turn_counts.get(spk_id, 0) + 1
+            if spk_id not in samples:
+                samples[spk_id] = clean(line)[:120]
+                first_stamps[spk_id] = stamp(t)
+            last_t = t
+
+        for spk_id, count in turn_counts.items():
+            num = spk_id.split("-")[1]
+            speakers_map[spk_id] = {
+                "id": spk_id,
+                "label": f"Speaker {num}",
+                "count": count,
+                "sample": samples.get(spk_id, ""),
+                "first_spoken": first_stamps.get(spk_id, "00:00"),
+            }
+
+    return sorted(speakers_map.values(), key=lambda s: s["count"], reverse=True)
+
+
 def build_payload(meeting_key: str, title: str, transcript: str, recording_url: str = "",
                   meeting_status: str = "complete", retention: dict | None = None) -> dict[str, Any]:
     import time
     from datetime import datetime, timezone
     ext = extract(transcript)
+    cues = parse_transcript(transcript)
+    speakers = extract_speakers(cues, transcript)
     items = []
     items.extend(ext.get("agenda", []))
     items.extend(ext.get("chapters", []))
@@ -580,6 +636,8 @@ def build_payload(meeting_key: str, title: str, transcript: str, recording_url: 
         "transcript_text": transcript,
         "transcript_status": "auto",
         "items": items,
+        "speakers": speakers,
+        "distinct_speaker_count": len(speakers),
         "retention": retention or {
             "correlation_id": meeting_key,
             "stored_at": now_iso,

@@ -26,11 +26,91 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
 
+  // Speaker mapping state
+  const [speakers, setSpeakers] = useState<Array<{ id: string; label: string; count: number; sample: string; customName: string }>>([]);
+  const [speakersApplied, setSpeakersApplied] = useState(false);
+
   // Joomla Bridge state
   const [joomlaUrl, setJoomlaUrl] = useState("");
   const [bridgeToken, setBridgeToken] = useState("");
   const [joomlaStatus, setJoomlaStatus] = useState("");
   const [joomlaBusy, setJoomlaBusy] = useState(false);
+
+  function handleSpeakerNameChange(id: string, name: string) {
+    setSpeakers((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, customName: name } : s))
+    );
+  }
+
+  function applySpeakerNames() {
+    if (!result?.payload) return;
+    const payloadCopy = JSON.parse(JSON.stringify(result.payload));
+    const nameMap: Record<string, string> = {};
+
+    speakers.forEach((s) => {
+      const target = (s.customName || "").trim();
+      if (target && target !== s.label) {
+        nameMap[s.label] = target;
+        nameMap[s.id] = target;
+      }
+    });
+
+    if (Object.keys(nameMap).length === 0) {
+      alert("Please enter at least one new speaker name to apply.");
+      return;
+    }
+
+    // Replace speaker names across agenda items, chapters, presenter, and transcript
+    if (Array.isArray(payloadCopy.items)) {
+      payloadCopy.items.forEach((item: Record<string, any>) => {
+        if (item.presenter && nameMap[item.presenter]) {
+          item.presenter = nameMap[item.presenter];
+        }
+        if (item.speaker && nameMap[item.speaker]) {
+          item.speaker = nameMap[item.speaker];
+        }
+        Object.entries(nameMap).forEach(([oldName, newName]) => {
+          if (item.title && typeof item.title === "string") {
+            item.title = item.title.replaceAll(oldName, newName);
+          }
+          if (item.description && typeof item.description === "string") {
+            item.description = item.description.replaceAll(oldName, newName);
+          }
+          if (item.motion_text && typeof item.motion_text === "string") {
+            item.motion_text = item.motion_text.replaceAll(oldName, newName);
+          }
+          if (item.second_text && typeof item.second_text === "string") {
+            item.second_text = item.second_text.replaceAll(oldName, newName);
+          }
+          if (item.vote_text && typeof item.vote_text === "string") {
+            item.vote_text = item.vote_text.replaceAll(oldName, newName);
+          }
+        });
+      });
+    }
+
+    if (typeof payloadCopy.transcript_text === "string") {
+      let tr = payloadCopy.transcript_text;
+      Object.entries(nameMap).forEach(([oldName, newName]) => {
+        tr = tr.replaceAll(oldName, newName);
+      });
+      payloadCopy.transcript_text = tr;
+    }
+
+    if (Array.isArray(payloadCopy.speakers)) {
+      payloadCopy.speakers.forEach((s: Record<string, any>) => {
+        if (nameMap[s.label]) s.label = nameMap[s.label];
+        if (nameMap[s.id]) s.label = nameMap[s.id];
+      });
+    }
+
+    setResult({
+      ...result,
+      payload: payloadCopy,
+    });
+    setSpeakersApplied(true);
+    alert("✅ Speaker names successfully applied across all agenda items, chapters, and transcript!");
+  }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     if (e.target.files && e.target.files[0]) {
@@ -117,6 +197,20 @@ export default function Home() {
       }
 
       setResult(data);
+      if (Array.isArray((data.payload as any)?.speakers)) {
+        setSpeakers(
+          ((data.payload as any).speakers as Array<any>).map((s) => ({
+            id: s.id || `spk-${Math.random()}`,
+            label: s.label || "Speaker",
+            count: s.count || 1,
+            sample: s.sample || "",
+            customName: s.label || "",
+          }))
+        );
+      } else {
+        setSpeakers([]);
+      }
+      setSpeakersApplied(false);
       setStatus(data.message || "Meeting processed successfully!");
       setStatusType("success");
     } catch (error) {
@@ -300,6 +394,7 @@ export default function Home() {
                 setFile(null);
                 setResult(null);
                 setStatus("");
+                setSpeakers([]);
               }}
             >
               Clear
@@ -312,15 +407,71 @@ export default function Home() {
             </div>
           )}
 
-          {/* Results and Downloads */}
+          {/* Results, Speakers, and Downloads */}
           {result && (
             <div className="results-panel">
               <div className="results-header">
                 <h3>🎉 Meeting Artifacts Ready</h3>
                 <span className="results-counts">
-                  {result.counts?.items ?? 0} items · {result.counts?.chapters ?? 0} chapters · {result.counts?.agenda ?? 0} agenda outcomes
+                  {result.counts?.items ?? 0} items · {result.counts?.chapters ?? 0} chapters · {result.counts?.agenda ?? 0} agenda outcomes · {speakers.length} distinct speakers
                 </span>
               </div>
+
+              {/* Speaker Entity Distinction Panel */}
+              {speakers.length > 0 && (
+                <div className="speaker-panel" style={{
+                  margin: "16px 0",
+                  padding: "16px",
+                  borderRadius: "10px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.15)"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                    <h4 style={{ margin: 0, fontSize: "1rem", color: "#fff" }}>
+                      👥 Speaker Entity Distinction ({speakers.length} Distinct Speakers Detected)
+                    </h4>
+                    <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>Assign real names & titles to update the record</span>
+                  </div>
+
+                  <div style={{ display: "grid", gap: "10px", maxHeight: "280px", overflowY: "auto", paddingRight: "4px" }}>
+                    {speakers.map((spk) => (
+                      <div key={spk.id} style={{
+                        display: "grid",
+                        gridTemplateColumns: "140px 1fr 1fr",
+                        gap: "10px",
+                        alignItems: "center",
+                        background: "rgba(0, 0, 0, 0.2)",
+                        padding: "8px 12px",
+                        borderRadius: "6px"
+                      }}>
+                        <div>
+                          <strong style={{ display: "block", fontSize: "0.88rem" }}>{spk.label}</strong>
+                          <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>{spk.count} speaking turns</span>
+                        </div>
+                        <div style={{ fontSize: "0.8rem", opacity: 0.8, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          &ldquo;{spk.sample}&rdquo;
+                        </div>
+                        <input
+                          className="input"
+                          style={{ margin: 0, padding: "6px 10px", fontSize: "0.88rem" }}
+                          value={spk.customName}
+                          onChange={(e) => handleSpeakerNameChange(spk.id, e.target.value)}
+                          placeholder="e.g. Jordan Lee (Chair)"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="primary"
+                    style={{ marginTop: "12px", width: "100%" }}
+                    onClick={applySpeakerNames}
+                  >
+                    ✨ Apply Speaker Names to Agenda, Motions &amp; Transcripts
+                  </button>
+                </div>
+              )}
 
               <div className="download-grid">
                 <button
