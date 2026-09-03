@@ -69,21 +69,30 @@ def transcribe(source: str, *, model: str = "", prefer_asr: bool = False) -> dic
         if cues: return {"text":"\n".join(f"{_stamp(t)} - {v}" for t,v in cues),"cues":[{"start":t,"text":v} for t,v in cues],"source":"captions"}
     with tempfile.TemporaryDirectory(prefix="postmeet-") as td:
         wd=Path(td); src=src_path
+        err_details = []
         if src is None and shutil.which("yt-dlp"):
             # Prefer captions when present; audio is the deterministic fallback.
             cap_prefix=wd/"captions"
-            _run(["yt-dlp","--skip-download","--write-auto-subs","--write-subs","--sub-langs","en,en-US,en-GB","--sub-format","vtt","--no-playlist","-o",str(cap_prefix),source],600)
+            p1 = _run(["yt-dlp","--skip-download","--write-auto-subs","--write-subs","--sub-langs","en,en-US,en-GB","--sub-format","vtt","--no-playlist","--extractor-args","youtube:player_client=android,web","-o",str(cap_prefix),source],600)
             caps=sorted(wd.glob("captions*.vtt"))
             if caps:
                 cues=_parse_caption_file(caps[0])
                 if cues: return {"text":"\n".join(f"{_stamp(t)} - {v}" for t,v in cues),"cues":[{"start":t,"text":v} for t,v in cues],"source":"captions"}
+            if p1.returncode != 0 and p1.stderr.strip():
+                err_details.append(p1.stderr.strip().splitlines()[-1])
         if src is None and shutil.which("ffmpeg") and (source.startswith(("http://","https://"))):
             out=wd/"audio.wav"; p=_run(["ffmpeg","-nostdin","-y","-i",source,"-vn","-ac","1","-ar","16000","-f","wav",str(out)],1800)
             if p.returncode==0 and out.exists() and out.stat().st_size>1024: src=out
+            elif p.returncode != 0 and p.stderr.strip():
+                err_details.append(p.stderr.strip().splitlines()[-1])
         if src is None and shutil.which("yt-dlp") and source.startswith(("http://","https://")):
-            p=_run(["yt-dlp","-x","--audio-format","mp3","--no-playlist","-o",str(wd/"audio.%(ext)s"),source],1800)
+            p=_run(["yt-dlp","-x","--audio-format","mp3","--no-playlist","--extractor-args","youtube:player_client=android,web","-o",str(wd/"audio.%(ext)s"),source],1800)
             found=sorted(wd.glob("audio.*")); src=found[0] if p.returncode==0 and found else None
-        if src is None: return {"text":"","cues":[],"source":"none","error":"No media could be acquired. Install ffmpeg/yt-dlp or provide a local media/transcript file."}
+            if p.returncode != 0 and p.stderr.strip():
+                err_details.append(p.stderr.strip().splitlines()[-1])
+        if src is None:
+            diag = f": {'; '.join(err_details)}" if err_details else ""
+            return {"text":"","cues":[],"source":"none","error":f"No media could be acquired from '{source}'{diag}. Please use the 'File Upload' tab to upload the media or transcript directly."}
         cues=_fw(src,model)
         if cues is None:
             whisper=os.getenv("POSTMEET_WHISPER_BIN","whisper")
