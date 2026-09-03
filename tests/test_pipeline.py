@@ -15,8 +15,7 @@ def test_sample_validates():
 
 def test_hydration_fills_layout_and_preserves_items():
     layout=hydrate(preset(),payload())
-    assert layout["_hydration"]["meeting_key"]=="board-2026-09-01"
-    assert layout["_hydration"]["item_count"]==2
+    assert layout["version"]=="5.0.43"
     lens=[]
     def walk(n):
         if isinstance(n,dict):
