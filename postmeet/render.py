@@ -96,12 +96,18 @@ def render(payload: Dict[str, Any]) -> str:
     resources = [i for i in items if i.get("record_type") == "resource"]
 
     # Top-level vs child agenda items
-    tops = [a for a in agenda_all if not a.get("parent_key")]
+    top_map = {a.get("record_key"): a for a in agenda_all if not a.get("parent_key")}
+    tops = list(top_map.values())
     children_by_parent: Dict[str, List[dict]] = {}
+
     for a in agenda_all:
         pk = a.get("parent_key")
         if pk:
-            children_by_parent.setdefault(pk, []).append(a)
+            if pk in top_map:
+                children_by_parent.setdefault(pk, []).append(a)
+            else:
+                # If parent is missing or is another child, keep at top level so nothing cascades
+                tops.append(a)
 
     # Render Chapters
     ch_li_list = []
@@ -167,12 +173,13 @@ def render(payload: Dict[str, Any]) -> str:
         if vote: outcome_parts.append(f'<p><strong>Vote:</strong> {e(vote)}</p>')
         outcome_html = f'<div class="xs-ml-outcome">{"".join(outcome_parts)}</div>' if outcome_parts else ""
 
-        # Children
-        kids = children_by_parent.get(k, [])
+        # Strictly max 1 level of children (level 1 -> 2 only, never level 3+)
         kids_html = ""
-        if kids:
-            k_lis = [render_agenda_item(ch, level + 1) for ch in kids]
-            kids_html = f'<ol class="xs-ml-agenda" data-xs-ml-agenda-level="{level + 1}">{"".join(k_lis)}</ol>'
+        if level < 2:
+            kids = children_by_parent.get(k, [])
+            if kids:
+                k_lis = [render_agenda_item(ch, level + 1) for ch in kids]
+                kids_html = f'<ol class="xs-ml-agenda" data-xs-ml-agenda-level="{level + 1}">{"".join(k_lis)}</ol>'
 
         num_span = f'<span class="xs-ml-agenda-number">{e(num)}</span>' if num else ""
 

@@ -252,16 +252,17 @@ def find_outcomes(cues: List[Cue], agenda: List[dict]) -> int:
         # One agenda item can carry several motions; later ones become children
         # rather than overwriting the first. Every vote survives.
         if target.get("motion_text"):
+            root_parent_key = target.get("parent_key") or target["record_key"]
             child = {
                 "record_type": "agenda",
-                "record_key": f"{target['record_key']}-m{len(agenda)}",
+                "record_key": f"{root_parent_key}-m{len(agenda)}",
                 "title": motion_title(motion),
                 "agenda_number": "",
                 "agenda_kind": "action",
                 "description": joined[:600],
                 "outcome": "discussed",
                 "highlight": False,
-                "parent_key": target["record_key"],
+                "parent_key": root_parent_key,
                 "start_time": stamp(t),
                 "evidence_line": line,
                 "confidence": 0.7,
@@ -333,14 +334,15 @@ def find_votes(cues: List[Cue], agenda: List[dict]) -> int:
         votes = [l for l in window if VOTE_RE.search(l)]
         target = owner
         if owner.get("motion_text") and owner.get("vote_text"):
+            root_parent_key = owner.get("parent_key") or owner["record_key"]
             target = {
                 "record_type": "agenda",
-                "record_key": f"{owner['record_key']}-v{added}",
+                "record_key": f"{root_parent_key}-v{added}",
                 "title": "Recorded vote",
                 "agenda_number": "",
                 "agenda_kind": "action",
                 "description": " ".join(window)[:600],
-                "parent_key": owner["record_key"],
+                "parent_key": root_parent_key,
                 "start_time": stamp(t),
                 "evidence_line": line,
                 "confidence": 0.5,
