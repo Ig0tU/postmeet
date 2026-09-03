@@ -9,3 +9,6 @@ build/
 postmeet-output/
 .env
 .DS_Store
+node_modules/
+.next/
+out/
