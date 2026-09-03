@@ -14,9 +14,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (process.env.HF_TOKEN) {
+      headers["authorization"] = `Bearer ${process.env.HF_TOKEN}`;
+    }
+
     const response = await fetch(`${worker}/process`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify(body),
       cache: "no-store",
     });
