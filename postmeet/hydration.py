@@ -306,17 +306,13 @@ def hydrate(preset: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
                 # exist; accepted payload data owns their value.
                 props[key] = copy.deepcopy(context[nk])
 
-    layout["_hydration"] = {
-        "meeting_key": payload.get("meeting_key"),
-        "item_count": len(payload.get("items") or []),
-        "brand_source": (payload.get("brand") or {}).get("source_site", ""),
-        "correlation_id": (payload.get("retention") or {}).get("correlation_id", ""),
-        "source_provider": context.get("provider") or context.get("source_provider") or "",
-        "video_id": context.get("video_id") or "",
-        "channel": context.get("channel") or context.get("channel_name") or "",
-        "declared_source_fields": sorted((payload.get("source_fields") or {}).keys()),
-        "replaceable_data_props": sorted(replaceable),
-    }
+    from datetime import datetime, timezone
+    layout["version"] = "5.0.43"
+    layout["modified"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    if payload.get("title"):
+        layout["name"] = payload["title"]
+    layout.pop("_template_meta", None)
+    layout.pop("_hydration", None)
     return layout
 
 
