@@ -1,0 +1,16 @@
+{
+  "meeting_key": "board-2026-09-01",
+  "title": "September 2026 Board Meeting",
+  "body_name": "Example Board of Education",
+  "meeting_type": "regular",
+  "meeting_status": "complete",
+  "recording_url": "https://example.com/meeting.mp4",
+  "media_mode": "recording",
+  "media_provider": "native",
+  "brand": {"primary":"#1e3a5f","secondary":"#4a90a4","accent":"#c4a35a","source_site":"https://example.org/"},
+  "items": [
+    {"record_key":"agenda-01-call-to-order","record_type":"agenda","title":"Call to Order","agenda_number":"1","agenda_kind":"procedural","outcome":"discussed","highlight":false,"start_time":"00:01","evidence_line":"I call this meeting to order.","confidence":0.98},
+    {"record_key":"agenda-02-budget","record_type":"agenda","title":"Budget Approval","agenda_number":"2","agenda_kind":"action","outcome":"approved","highlight":true,"start_time":"12:30","motion_text":"I move that we approve the proposed budget.","vote_text":"All in favor. Motion carries.","verbatim":true,"confidence":0.94}
+  ],
+  "retention": {"correlation_id":"board-2026-09-01","stored_at":"2026-09-02T00:00:00Z","stages_complete":["extract","validate"]}
+}
