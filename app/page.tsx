@@ -78,10 +78,19 @@ export default function Home() {
       let response: Response;
 
       if (mode === "upload" && file) {
+        // Direct browser upload to Hugging Face worker completely bypasses Vercel 4.5MB serverless limits
+        let targetUrl = "https://acecalisto3-postmeet.hf.space/upload";
+        try {
+          const cfg = await fetch("/api/config").then((r) => r.json());
+          if (cfg?.workerUrl) {
+            targetUrl = `${cfg.workerUrl}/upload`;
+          }
+        } catch {}
+
         const fd = new FormData();
         fd.append("file", file);
         if (siteUrl.trim()) fd.append("site_url", siteUrl.trim());
-        response = await fetch("/api/upload", {
+        response = await fetch(targetUrl, {
           method: "POST",
           body: fd,
         });
@@ -93,7 +102,16 @@ export default function Home() {
         });
       }
 
-      const data: PipelineResult = await response.json().catch(() => ({}));
+      const text = await response.text();
+      let data: PipelineResult;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        if (text.includes("500") || text.includes("<html")) {
+          throw new Error("Worker temporarily timed out or rejected payload. Please ensure file is valid media/captions.");
+        }
+        throw new Error(text || "Server error");
+      }
       if (!response.ok || !data.ok) {
         throw new Error(data.error || data.message || "Processing failed");
       }

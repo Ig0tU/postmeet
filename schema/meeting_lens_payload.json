@@ -5,15 +5,123 @@
   "type": "object",
   "required": ["meeting_key", "title", "meeting_status", "items", "retention"],
   "properties": {
-    "meeting_key": {"type":"string","minLength":1},
-    "title": {"type":"string","minLength":1},
-    "body_name": {"type":"string"},
-    "meeting_type": {"type":"string","enum":["regular","special","work-session","hearing","other"]},
-    "meeting_status": {"type":"string","enum":["scheduled","live","complete","cancelled"]},
-    "starts_at":{"type":"string"},"ends_at":{"type":"string"},"timezone_label":{"type":"string"},"location":{"type":"string"},"address":{"type":"string"},"summary":{"type":"string"},"public_notice":{"type":"string"},"accommodation_text":{"type":"string"},"contact_name":{"type":"string"},"contact_link":{"type":"string"},"duration":{"type":"string"},"recording_url":{"type":"string"},"poster":{"type":"string"},"captions_url":{"type":"string"},"transcript_url":{"type":"string"},"transcript_status":{"type":"string","enum":["unavailable","auto","reviewed","official"]},"transcript_language":{"type":"string"},"transcript_text":{"type":"string"},"primary_recording_key":{"type":"string"},"initial_agenda_key":{"type":"string"},"media_mode":{"type":"string"},"media_provider":{"type":"string"},
-    "brand":{"type":"object","properties":{"primary":{"type":"string"},"secondary":{"type":"string"},"accent":{"type":"string"},"logo_url":{"type":"string"},"mascot_url":{"type":"string"},"font_display":{"type":"string"},"font_body":{"type":"string"},"source_site":{"type":"string"}}},
-    "items":{"type":"array","minItems":1,"maxItems":400,"items":{"type":"object","required":["record_key","record_type","title"],"properties":{"record_key":{"type":"string","minLength":1},"record_type":{"type":"string","enum":["agenda","resource","chapter"]},"title":{"type":"string","minLength":1},"description":{"type":"string"},"agenda_number":{"type":"string"},"agenda_kind":{"type":"string"},"presenter":{"type":"string"},"outcome":{"type":"string"},"motion_text":{"type":"string"},"vote_text":{"type":"string"},"parent_key":{"type":"string"},"highlight":{"type":"boolean"},"resource_type":{"type":"string"},"link":{"type":"string"},"mime_type":{"type":"string"},"file_size":{"type":"string"},"language":{"type":"string"},"availability":{"type":"string"},"start_time":{"type":"string"},"end_time":{"type":"string"},"agenda_key":{"type":"string"},"recording_key":{"type":"string"},"speaker":{"type":"string"},"chapter_summary":{"type":"string"},"source":{"type":"object","properties":{"kind":{"type":"string"},"ref":{"type":"string"},"span":{"type":"string"}}},"confidence":{"type":"number","minimum":0,"maximum":1},"verbatim":{"type":"boolean"}}}},
-    "retention":{"type":"object","required":["correlation_id","stored_at","stages_complete"],"properties":{"correlation_id":{"type":"string"},"stored_at":{"type":"string"},"stages_complete":{"type":"array","items":{"type":"string"}},"artifact_path":{"type":"string"},"video_deleted":{"type":"boolean"}}}
+    "meeting_key": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "body_name": { "type": "string" },
+    "meeting_type": {
+      "type": "string",
+      "enum": ["regular", "special", "work-session", "hearing", "other"]
+    },
+    "meeting_status": {
+      "type": "string",
+      "enum": ["scheduled", "live", "complete", "cancelled"]
+    },
+    "starts_at": { "type": "string" },
+    "ends_at": { "type": "string" },
+    "timezone_label": { "type": "string" },
+    "location": { "type": "string" },
+    "address": { "type": "string" },
+    "summary": { "type": "string" },
+    "public_notice": { "type": "string" },
+    "accommodation_text": { "type": "string" },
+    "contact_name": { "type": "string" },
+    "contact_link": { "type": "string" },
+    "duration": { "type": "string" },
+    "recording_url": { "type": "string" },
+    "poster": { "type": "string" },
+    "captions_url": { "type": "string" },
+    "transcript_url": { "type": "string" },
+    "transcript_status": {
+      "type": "string",
+      "enum": ["unavailable", "auto", "reviewed", "official"]
+    },
+    "transcript_language": { "type": "string" },
+    "transcript_text": { "type": "string" },
+    "primary_recording_key": { "type": "string" },
+    "initial_agenda_key": { "type": "string" },
+    "media_mode": { "type": "string" },
+    "media_provider": { "type": "string" },
+    "brand": {
+      "type": "object",
+      "properties": {
+        "primary": { "type": "string" },
+        "secondary": { "type": "string" },
+        "accent": { "type": "string" },
+        "logo_url": { "type": "string" },
+        "mascot_url": { "type": "string" },
+        "font_display": { "type": "string" },
+        "font_body": { "type": "string" },
+        "source_site": { "type": "string" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 400,
+      "items": {
+        "type": "object",
+        "required": ["record_key", "record_type", "title"],
+        "properties": {
+          "record_key": { "type": "string", "minLength": 1 },
+          "record_type": { "type": "string", "enum": ["agenda", "resource", "chapter"] },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "agenda_number": { "type": "string" },
+          "agenda_kind": { "type": "string" },
+          "presenter": { "type": "string" },
+          "outcome": { "type": "string" },
+          "motion_text": { "type": "string" },
+          "vote_text": { "type": "string" },
+          "parent_key": { "type": "string" },
+          "highlight": { "type": "boolean" },
+          "resource_type": { "type": "string" },
+          "link": { "type": "string" },
+          "mime_type": { "type": "string" },
+          "file_size": { "type": "string" },
+          "language": { "type": "string" },
+          "availability": { "type": "string" },
+          "start_time": { "type": "string" },
+          "end_time": { "type": "string" },
+          "agenda_key": { "type": "string" },
+          "recording_key": { "type": "string" },
+          "speaker": { "type": "string" },
+          "chapter_summary": { "type": "string" },
+          "source": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string" },
+              "ref": { "type": "string" },
+              "span": { "type": "string" }
+            }
+          },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "verbatim": { "type": "boolean" }
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "required": ["correlation_id", "stored_at", "stages_complete"],
+      "properties": {
+        "correlation_id": { "type": "string" },
+        "stored_at": { "type": "string" },
+        "stages_complete": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "artifact_path": { "type": "string" },
+        "video_deleted": { "type": "boolean" }
+      }
+    }
   },
-  "allOf":[{"not":{"properties":{"meeting_status":{"enum":["closed","executive"]}}}}]
+  "allOf": [
+    {
+      "description": "Public templates must not carry closed/executive status",
+      "not": {
+        "properties": {
+          "meeting_status": { "enum": ["closed", "executive"] }
+        }
+      }
+    }
+  ]
 }
