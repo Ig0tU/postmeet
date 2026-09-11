@@ -11,7 +11,7 @@ def main():
  v=sub.add_parser("validate"); v.add_argument("payload")
  h=sub.add_parser("hydrate"); h.add_argument("payload"); h.add_argument("--preset",default="presets/meeting_lens_full.json"); h.add_argument("-o","--output",default="layout.json")
  r=sub.add_parser("render"); r.add_argument("payload"); r.add_argument("-o","--output",default="meeting.html")
- x=sub.add_parser("run"); x.add_argument("source"); x.add_argument("--site-url",default=""); x.add_argument("--media-root",default=""); x.add_argument("--model",default=""); x.add_argument("--output-dir",default="postmeet-output"); x.add_argument("--preset",default="presets/meeting_lens_full.json")
+ x=sub.add_parser("run"); x.add_argument("source"); x.add_argument("--site-url",default=""); x.add_argument("--media-root",default=""); x.add_argument("--model",default=""); x.add_argument("--output-dir",default="postmeet-output"); x.add_argument("--preset",default="presets/meeting_lens_full.json"); x.add_argument("--youtube-url",default=""); x.add_argument("--media-url",default="")
  args=p.parse_args()
  if args.command=="validate":
   result=validate(json.loads(Path(args.payload).read_text())); print(json.dumps(result,indent=2)); raise SystemExit(0 if result["ok"] else 1)
@@ -22,5 +22,5 @@ def main():
   if not result["ok"]: print(json.dumps(result,indent=2)); raise SystemExit(1)
   Path(args.output).write_text(json.dumps(hydrate(json.loads(Path(args.preset).read_text()),payload),indent=2),encoding="utf-8"); print(args.output); return
  from .pipeline import run
- print(json.dumps(run(args.source,site_url=args.site_url,media_root=args.media_root,model=args.model,output_dir=args.output_dir,preset_path=args.preset),indent=2))
+ print(json.dumps(run(args.source,site_url=args.site_url,media_root=args.media_root,model=args.model,output_dir=args.output_dir,preset_path=args.preset,youtube_url=args.youtube_url,media_url=args.media_url),indent=2))
 if __name__=="__main__": main()

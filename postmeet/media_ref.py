@@ -99,15 +99,42 @@ def _guard_url(url: str, site_url: str = "") -> None:
         raise ValueError("That media URL resolves to a private/local network address.")
 
 
+def extract_youtube_id(url: str) -> str | None:
+    """Extract canonical 11-character YouTube ID from various URL formats.
+
+    Supports:
+    - https://www.youtube.com/watch?v=<id>
+    - https://youtu.be/<id>
+    - https://www.youtube.com/embed/<id>
+    - https://www.youtube-nocookie.com/embed/<id>
+    - https://www.youtube.com/shorts/<id>
+    - https://www.youtube.com/v/<id>
+    - Bare/direct YouTube ID string
+    """
+    u = (url or "").strip()
+    if not u:
+        return None
+    patterns = [
+        r"(?:https?://)?(?:www\.)?youtube\.com/watch\?(?:.*&)?v=([A-Za-z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtube\.com/shorts/([A-Za-z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtube\.com/v/([A-Za-z0-9_-]{11})",
+        r"(?:https?://)?youtu\.be/([A-Za-z0-9_-]{11})",
+        r"^([A-Za-z0-9_-]{11})$",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, u)
+        if m:
+            return m.group(1)
+    return None
+
+
 def normalize_url(url: str) -> str:
     """Normalize malformed YouTube or media URLs."""
     u = (url or "").strip()
-    m_yt_bare = re.match(r"^https?://(?:www\.)?youtube\.com/([A-Za-z0-9_-]{11})(?:[/?#]|$)", u)
-    if m_yt_bare:
-        return f"https://www.youtube.com/watch?v={m_yt_bare.group(1)}"
-    m_yt_short = re.match(r"^https?://youtu\.be/([A-Za-z0-9_-]{11})(?:[/?#]|$)", u)
-    if m_yt_short:
-        return f"https://www.youtube.com/watch?v={m_yt_short.group(1)}"
+    yt_id = extract_youtube_id(u)
+    if yt_id and not _mediaish_url(u):
+        return f"https://www.youtube.com/watch?v={yt_id}"
     return u
 
 

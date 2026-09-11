@@ -17,6 +17,7 @@ interface PipelineResult {
 export default function Home() {
   const [mode, setMode] = useState<"upload" | "url">("upload");
   const [source, setSource] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [siteUrl, setSiteUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -139,12 +140,12 @@ export default function Home() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (mode === "upload" && !file) {
-      setStatus("Please select a file to upload.");
+      setStatus("Please select a downloaded media file to upload for processing.");
       setStatusType("error");
       return;
     }
-    if (mode === "url" && !source.trim()) {
-      setStatus("Please provide a recording URL.");
+    if (mode === "url" && !source.trim() && !youtubeUrl.trim()) {
+      setStatus("Please provide a recording or YouTube URL.");
       setStatusType("error");
       return;
     }
@@ -157,28 +158,72 @@ export default function Home() {
     try {
       let response: Response;
 
-      if (mode === "upload" && file) {
-        // Direct browser upload to Hugging Face worker completely bypasses Vercel 4.5MB serverless limits
-        let targetUrl = "https://acecalisto3-postmeet.hf.space/upload";
+      const effectiveYoutubeUrl = (youtubeUrl.trim() || (mode === "url" ? source.trim() : "")).trim();
+
+      if (file) {
+        // Step 1: Upload file ephemerally
+        let uploadTarget = "/api/upload";
         try {
           const cfg = await fetch("/api/config").then((r) => r.json());
           if (cfg?.workerUrl) {
-            targetUrl = `${cfg.workerUrl}/upload`;
+            uploadTarget = `${cfg.workerUrl}/upload`;
           }
         } catch {}
 
         const fd = new FormData();
         fd.append("file", file);
         if (siteUrl.trim()) fd.append("site_url", siteUrl.trim());
-        response = await fetch(targetUrl, {
+        if (effectiveYoutubeUrl) fd.append("youtube_url", effectiveYoutubeUrl);
+
+        const uploadResp = await fetch(uploadTarget, {
           method: "POST",
           body: fd,
         });
+
+        const uploadText = await uploadResp.text();
+        let uploadData: any;
+        try {
+          uploadData = JSON.parse(uploadText);
+        } catch {
+          throw new Error("Upload failed: " + uploadText);
+        }
+
+        if (!uploadResp.ok || uploadData.error) {
+          throw new Error(uploadData.error || "Upload failed");
+        }
+
+        // If upload endpoint directly processed and returned final result
+        if (uploadData.ok && uploadData.layout) {
+          response = new Response(JSON.stringify(uploadData), { status: 200 });
+        } else {
+          // Step 2: Trigger process endpoint with uploaded filePath & youtubeUrl
+          let processTarget = "/api/process";
+          try {
+            const cfg = await fetch("/api/config").then((r) => r.json());
+            if (cfg?.workerUrl) {
+              processTarget = `${cfg.workerUrl}/process`;
+            }
+          } catch {}
+
+          response = await fetch(processTarget, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              filePath: uploadData.filePath || uploadData.source,
+              youtubeUrl: effectiveYoutubeUrl,
+              site_url: siteUrl.trim(),
+            }),
+          });
+        }
       } else {
         response = await fetch("/api/process", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source: source.trim(), site_url: siteUrl.trim() }),
+          body: JSON.stringify({
+            source: source.trim(),
+            youtubeUrl: effectiveYoutubeUrl,
+            site_url: siteUrl.trim(),
+          }),
         });
       }
 
@@ -316,7 +361,46 @@ export default function Home() {
 
         <form className="card" onSubmit={submit}>
           <h2>Process a meeting</h2>
-          <p>Upload a media/transcript file or paste a video URL.</p>
+          <p>Upload a media/transcript file or paste a YouTube / video URL.</p>
+
+          {/* YouTube Video Link Input */}
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", marginBottom: "6px", fontSize: "0.88rem", fontWeight: 600 }}>
+              YouTube Video Link (Optional)
+            </label>
+            <input
+              className="input"
+              value={youtubeUrl}
+              onChange={(e) => setYoutubeUrl(e.target.value)}
+              placeholder="e.g. https://www.youtube.com/watch?v=... or https://youtu.be/..."
+              type="url"
+            />
+            {youtubeUrl.trim() && (
+              <div style={{
+                marginTop: "8px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: "rgba(255, 255, 255, 0.06)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                fontSize: "0.84rem",
+                lineHeight: "1.4"
+              }}>
+                ℹ️ <strong>YouTube Stream Integration:</strong> Speech extraction runs on your uploaded local media file, while the final output embeds and syncs directly to this YouTube stream.
+                <div style={{ marginTop: "6px" }}>
+                  💡 Need to download the YouTube audio/video first? Use an external tool like{" "}
+                  <a
+                    href={`https://cobalt.tools/?url=${encodeURIComponent(youtubeUrl.trim())}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#60a5fa", textDecoration: "underline" }}
+                  >
+                    Cobalt Downloader
+                  </a>{" "}
+                  or <code style={{ background: "rgba(0,0,0,0.3)", padding: "2px 4px", borderRadius: "4px" }}>yt-dlp</code> to pull the media file to your device.
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="tabs">
             <button
@@ -324,14 +408,14 @@ export default function Home() {
               className={`tab-btn ${mode === "upload" ? "active" : ""}`}
               onClick={() => setMode("upload")}
             >
-              📁 File Upload
+              📁 File Upload (Processing Target)
             </button>
             <button
               type="button"
               className={`tab-btn ${mode === "url" ? "active" : ""}`}
               onClick={() => setMode("url")}
             >
-              🌐 Video URL
+              🌐 Direct Media URL
             </button>
           </div>
 
@@ -348,11 +432,11 @@ export default function Home() {
                 {file ? (
                   <strong>{file.name} ({(file.size / (1024 * 1024)).toFixed(1)} MB)</strong>
                 ) : (
-                  <span>Click to browse or drop media / transcript</span>
+                  <span>Click to browse or drop Downloaded Media / Transcript File</span>
                 )}
               </div>
               <div className="dropzone-hint">
-                Audio/Video (.mp4, .mp3, .wav, .m4a), Captions (.vtt, .srt, .txt), or Payload (.json)
+                Audio/Video (.mp4, .mp3, .wav, .m4a), Captions (.vtt, .srt, .txt), or Payload (.json). File is deleted after processing.
               </div>
               <input
                 id="file-upload-input"
@@ -367,7 +451,7 @@ export default function Home() {
               className="input"
               value={source}
               onChange={(e) => setSource(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=... or .mp4 URL"
+              placeholder="https://example.org/meeting.mp4 or transcript URL"
               type="url"
             />
           )}
@@ -391,6 +475,7 @@ export default function Home() {
               type="button"
               onClick={() => {
                 setSource("");
+                setYoutubeUrl("");
                 setFile(null);
                 setResult(null);
                 setStatus("");
