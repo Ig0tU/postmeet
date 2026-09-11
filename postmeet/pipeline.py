@@ -13,8 +13,10 @@ from .source_fields import apply as apply_source, extract as extract_source
 
 
 def run(source: str, *, site_url: str = "", media_root: str = "", model: str = "", brand: dict | None = None,
-        output_dir: str = "postmeet-output", preset_path: str = "presets/meeting_lens_full.json"):
+        output_dir: str = "postmeet-output", preset_path: str = "presets/meeting_lens_full.json",
+        youtube_url: str = "", media_url: str = ""):
     out = Path(output_dir).expanduser().resolve(); out.mkdir(parents=True, exist_ok=True)
+    yt_url = youtube_url or media_url
     media = resolve(source, site_url=site_url, media_root=media_root)
     source_fields = extract_source(media, source)
     if source_fields.get("video_title"):
@@ -47,6 +49,9 @@ def run(source: str, *, site_url: str = "", media_root: str = "", model: str = "
     payload["transcript_text"] = asr["text"]
     payload["source_media"] = media
     payload["source_fields"] = source_fields
+    if yt_url:
+        payload["youtube_url"] = yt_url
+        payload["source_fields"]["youtube_url"] = yt_url
     if brand: payload["brand"] = brand
     apply_source(payload, media, source)
 

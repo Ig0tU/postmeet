@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Set
 
+from .media_ref import extract_youtube_id
+
 PLACEHOLDER_RE = re.compile(r"\{([A-Z0-9_]+)\}")
 _KEY_RE = re.compile(r"[^a-z0-9]+")
 
@@ -130,9 +132,25 @@ def projection_context(payload: Mapping[str, Any]) -> Dict[str, Any]:
         context.setdefault(plural, rows)
     context.setdefault("item_count", len(items))
 
+    yt_candidate = (
+        p.get("youtube_url")
+        or context.get("youtube_url")
+        or (p.get("source_fields") or {}).get("youtube_url")
+        or (p.get("source_media") or {}).get("youtube_url")
+    )
+    if yt_candidate:
+        yt_id = extract_youtube_id(yt_candidate)
+        if yt_id:
+            embed_url = f"https://www.youtube-nocookie.com/embed/{yt_id}?enablejsapi=1"
+            context["youtube_url"] = yt_candidate
+            context["youtube_id"] = yt_id
+            context["recording_url"] = embed_url
+            context["video_url"] = embed_url
+            context["media_provider"] = "youtube"
+
     # Stable aliases used by Vlog/channel templates in addition to Meeting Lens.
     aliases = {
-        "youtube_url": context.get("video_url") or context.get("source_url") or context.get("recording_url"),
+        "youtube_url": context.get("youtube_url") or context.get("video_url") or context.get("source_url") or context.get("recording_url"),
         "video": context.get("video_url") or context.get("recording_url"),
         "video_title": context.get("video_title") or context.get("source_title") or context.get("title"),
         "channel_name": context.get("channel_name") or context.get("channel") or context.get("creator"),
@@ -197,6 +215,18 @@ def build_mapping(payload: Dict[str, Any]) -> Dict[str, str]:
     # Backward-compatible explicit names. These also document the canonical
     # Meeting Lens contract and provide defaults where a source has no value.
     brand = payload.get("brand") or {}
+    yt_candidate = (
+        payload.get("youtube_url")
+        or context.get("youtube_url")
+        or (payload.get("source_fields") or {}).get("youtube_url")
+        or (payload.get("source_media") or {}).get("youtube_url")
+    )
+    rec_url = context.get("recording_url") or payload.get("recording_url", "")
+    if yt_candidate:
+        yt_id = extract_youtube_id(yt_candidate)
+        if yt_id:
+            rec_url = f"https://www.youtube-nocookie.com/embed/{yt_id}?enablejsapi=1"
+
     explicit = {
         "MEETING_KEY": payload.get("meeting_key", ""),
         "MEETING_TITLE": payload.get("title", ""),
@@ -215,7 +245,7 @@ def build_mapping(payload: Dict[str, Any]) -> Dict[str, str]:
         "CONTACT_NAME": payload.get("contact_name", ""),
         "CONTACT_LINK": payload.get("contact_link", ""),
         "DURATION": payload.get("duration", ""),
-        "RECORDING_URL": payload.get("recording_url", ""),
+        "RECORDING_URL": rec_url,
         "POSTER": payload.get("poster", "") or context.get("thumbnail", ""),
         "CAPTIONS_URL": payload.get("captions_url", ""),
         "TRANSCRIPT_URL": payload.get("transcript_url", ""),
