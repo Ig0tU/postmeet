@@ -22,8 +22,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List
 from urllib.parse import urljoin, urlparse
 
-import httpx
-
 MEDIA_EXT = {
     ".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi",
     ".mp3", ".m4a", ".wav", ".aac", ".ogg", ".flac", ".wma",
@@ -260,6 +258,7 @@ class _MediaHTML(HTMLParser):
 
 def _html_candidates(url: str, site_url: str = "") -> List[Dict[str, Any]]:
     try:
+        import httpx
         with httpx.Client(follow_redirects=True, timeout=20,
                           headers={"User-Agent": "SignalMesh-MediaRef/1.0"}) as client:
             r = client.get(url)
