@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+from .media_ref import extract_youtube_id
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
@@ -30,28 +31,27 @@ def _format_time(sec: int) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _embed_player(url: str, poster: str = "", captions_url: str = "") -> str:
+def _embed_player(url: str, poster: str = "", captions_url: str = "", title: str = "") -> str:
     u = url or ""
-    vid = ""
-    if "youtube.com/watch?v=" in u:
-        vid = u.split("watch?v=")[1].split("&")[0]
-    elif "youtu.be/" in u:
-        vid = u.split("youtu.be/")[1].split("?")[0]
+    vid = extract_youtube_id(u)
 
     if vid:
-        return (f'<div class="xs-ml-player" data-xs-ml-player data-xs-ml-provider="youtube">'
-                f'<iframe id="player" class="uk-width-1-1" style="aspect-ratio:16/9;border:0;width:100%;border-radius:8px;"'
-                f' src="https://www.youtube.com/embed/{e(vid)}?enablejsapi=1"'
-                f' allow="accelerometer;autoplay;encrypted-media;gyroscope;picture-in-picture" allowfullscreen></iframe>'
+        escaped_title = e(title or "Recording")
+        return (f'<div class="xs-ml-player" data-xs-ml-player="" data-xs-ml-provider="youtube">\n'
+                f'    <iframe id="player" width="1440" height="810" '
+                f'src="https://www.youtube.com/embed/{vid}?enablejsapi=1" title="{escaped_title}" '
+                f'frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" '
+                f'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen '
+                f'style="width:100%; aspect-ratio:16/9; border-radius:8px; background:#000;"></iframe>\n'
                 f'</div>')
 
     track_tag = f'<track kind="captions" src="{e(captions_url)}" srclang="en" label="Captions" default>' if captions_url else ""
     poster_attr = f' poster="{e(poster)}"' if poster else ""
     src = e(u) if u else "#"
-    return (f'<div class="xs-ml-player" data-xs-ml-player data-xs-ml-provider="native">'
-            f'<video id="player" controls preload="metadata" style="width:100%;aspect-ratio:16/9;border-radius:8px;background:#000;"{poster_attr}>'
-            f'<source src="{src}">{track_tag}'
-            f'Your browser does not support the video tag.'
+    return (f'<div class="xs-ml-player" data-xs-ml-player data-xs-ml-provider="native">\n'
+            f'<video id="player" controls preload="metadata" style="width:100%;aspect-ratio:16/9;border-radius:8px;background:#000;"{poster_attr}>\n'
+            f'<source src="{src}">{track_tag}\n'
+            f'Your browser does not support the video tag.\n'
             f'</video></div>')
 
 
@@ -70,7 +70,12 @@ def render(payload: Dict[str, Any]) -> str:
     meeting_status = (payload.get("meeting_status") or "complete").lower()
     meeting_type = (payload.get("meeting_type") or "regular").capitalize()
     duration = payload.get("duration") or ""
-    rec_url = payload.get("recording_url") or ""
+
+    yt_url = (payload.get("youtube_url") or
+              (payload.get("source_fields") or {}).get("youtube_url") or
+              (payload.get("source_media") or {}).get("youtube_url") or "")
+    rec_url = yt_url or payload.get("recording_url") or ""
+
     poster = payload.get("poster") or ""
     captions_url = payload.get("captions_url") or ""
     transcript_url = payload.get("transcript_url") or ""
@@ -255,13 +260,9 @@ def render(payload: Dict[str, Any]) -> str:
             "recordingKey": "recording"
         })
 
-    provider = "youtube" if ("youtube.com" in rec_url or "youtu.be" in rec_url) else "native"
-    embed_url = ""
-    if provider == "youtube":
-        vid = ""
-        if "watch?v=" in rec_url: vid = rec_url.split("watch?v=")[1].split("&")[0]
-        elif "youtu.be/" in rec_url: vid = rec_url.split("youtu.be/")[1].split("?")[0]
-        embed_url = f"https://www.youtube.com/embed/{vid}?enablejsapi=1"
+    vid = extract_youtube_id(rec_url)
+    provider = "youtube" if vid else "native"
+    embed_url = f"https://www.youtube.com/embed/{vid}?enablejsapi=1" if vid else ""
 
     config_obj = {
         "id": root_id,
@@ -313,13 +314,17 @@ def render(payload: Dict[str, Any]) -> str:
     </section>''' if transcript_text else ''
 
     media_links = []
-    if rec_url: media_links.append(f'<a href="{e(rec_url)}">Recording link</a>')
+    if rec_url:
+        if provider == "youtube":
+            media_links.append(f'<a href="{e(rec_url)}" target="_blank">Recording link</a>')
+        else:
+            media_links.append(f'<a href="{e(rec_url)}">Recording link</a>')
     if captions_url: media_links.append(f'<a href="{e(captions_url)}">Captions</a>')
     if transcript_url: media_links.append(f'<a href="{e(transcript_url)}">Transcript</a>')
     media_links_html = f'<div class="xs-ml-media-links">{" ".join(media_links)}</div>' if media_links else ''
 
     chapters_render = chapters_html if chapters_html else '<li class="uk-text-meta">No chapters defined.</li>'
-    player_html = _embed_player(rec_url, poster, captions_url)
+    player_html = _embed_player(rec_url, poster, captions_url, title)
 
     inline_js = f"""
 {js_content}
