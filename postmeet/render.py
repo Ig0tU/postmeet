@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-from .media_ref import extract_youtube_id
+from .playback import ensure_playback, render_playback
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
@@ -32,27 +32,8 @@ def _format_time(sec: int) -> str:
 
 
 def _embed_player(url: str, poster: str = "", captions_url: str = "", title: str = "") -> str:
-    u = url or ""
-    vid = extract_youtube_id(u)
-
-    if vid:
-        escaped_title = e(title or "Recording")
-        return (f'<div class="xs-ml-player" data-xs-ml-player="" data-xs-ml-provider="youtube">\n'
-                f'    <iframe id="player" width="1440" height="810" '
-                f'src="https://www.youtube.com/embed/{vid}?enablejsapi=1" title="{escaped_title}" '
-                f'frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" '
-                f'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen '
-                f'style="width:100%; aspect-ratio:16/9; border-radius:8px; background:#000;"></iframe>\n'
-                f'</div>')
-
-    track_tag = f'<track kind="captions" src="{e(captions_url)}" srclang="en" label="Captions" default>' if captions_url else ""
-    poster_attr = f' poster="{e(poster)}"' if poster else ""
-    src = e(u) if u else "#"
-    return (f'<div class="xs-ml-player" data-xs-ml-player data-xs-ml-provider="native">\n'
-            f'<video id="player" controls preload="metadata" style="width:100%;aspect-ratio:16/9;border-radius:8px;background:#000;"{poster_attr}>\n'
-            f'<source src="{src}">{track_tag}\n'
-            f'Your browser does not support the video tag.\n'
-            f'</video></div>')
+    """Compatibility wrapper; supplied meeting titles cannot certify metadata."""
+    return render_playback(ensure_playback({"recording_url": url, "title": title}), poster, captions_url)
 
 
 def render(payload: Dict[str, Any]) -> str:
@@ -71,10 +52,8 @@ def render(payload: Dict[str, Any]) -> str:
     meeting_type = (payload.get("meeting_type") or "regular").capitalize()
     duration = payload.get("duration") or ""
 
-    yt_url = (payload.get("youtube_url") or
-              (payload.get("source_fields") or {}).get("youtube_url") or
-              (payload.get("source_media") or {}).get("youtube_url") or "")
-    rec_url = yt_url or payload.get("recording_url") or ""
+    playback = ensure_playback(payload)
+    rec_url = playback["recording_url"]
 
     poster = payload.get("poster") or ""
     captions_url = payload.get("captions_url") or ""
@@ -260,9 +239,8 @@ def render(payload: Dict[str, Any]) -> str:
             "recordingKey": "recording"
         })
 
-    vid = extract_youtube_id(rec_url)
-    provider = "youtube" if vid else "native"
-    embed_url = f"https://www.youtube.com/embed/{vid}?enablejsapi=1" if vid else ""
+    provider = playback["provider"]
+    embed_url = playback["embed_url"]
 
     config_obj = {
         "id": root_id,
@@ -271,6 +249,7 @@ def render(payload: Dict[str, Any]) -> str:
             "provider": provider,
             "url": rec_url,
             "embedUrl": embed_url,
+            "title": playback["title"],
             "seekable": True,
             "valid": bool(rec_url)
         },
@@ -291,7 +270,7 @@ def render(payload: Dict[str, Any]) -> str:
         "privacyMode": False,
         "transitionDuration": 180
     }
-    config_json_str = json.dumps(config_obj, separators=(',', ':'))
+    config_json_str = json.dumps(config_obj, separators=(',', ':')).replace('<', '\\u003c')
 
     summary_block = f'<div class="xs-ml-summary">{e(summary)}</div>' if summary else ''
     notice_block = f'<div class="xs-ml-notice"><strong>Public notice:</strong><br>{e(public_notice)}</div>' if public_notice else ''
@@ -316,7 +295,7 @@ def render(payload: Dict[str, Any]) -> str:
     media_links = []
     if rec_url:
         if provider == "youtube":
-            media_links.append(f'<a href="{e(rec_url)}" target="_blank">Recording link</a>')
+            media_links.append(f'<a href="{e(rec_url)}" target="_blank" rel="noopener noreferrer">Recording link</a>')
         else:
             media_links.append(f'<a href="{e(rec_url)}">Recording link</a>')
     if captions_url: media_links.append(f'<a href="{e(captions_url)}">Captions</a>')
@@ -324,7 +303,7 @@ def render(payload: Dict[str, Any]) -> str:
     media_links_html = f'<div class="xs-ml-media-links">{" ".join(media_links)}</div>' if media_links else ''
 
     chapters_render = chapters_html if chapters_html else '<li class="uk-text-meta">No chapters defined.</li>'
-    player_html = _embed_player(rec_url, poster, captions_url, title)
+    player_html = render_playback(playback, poster, captions_url)
 
     inline_js = f"""
 {js_content}
@@ -385,25 +364,7 @@ document.addEventListener("DOMContentLoaded", function() {{
         }});
     }}
 
-    // Video Seek Handlers
-    var video = root.querySelector('video#player');
-    var iframe = root.querySelector('iframe#player');
-    
-    root.querySelectorAll('[data-xs-ml-seek]').forEach(function(btn) {{
-        btn.addEventListener('click', function(e) {{
-            var sec = parseFloat(btn.getAttribute('data-xs-ml-seek') || '0');
-            if (video) {{
-                video.currentTime = sec;
-                video.play().catch(function(){{}});
-            }} else if (iframe && iframe.contentWindow) {{
-                iframe.contentWindow.postMessage(JSON.stringify({{
-                    event: "command",
-                    func: "seekTo",
-                    args: [sec, true]
-                }}), "*");
-            }}
-        }});
-    }});
+    // Seeking is bound once by the shared Meeting Lens provider.
 }});
 """
 

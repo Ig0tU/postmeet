@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import httpx
+from .playback import ensure_playback, extract_youtube_id
 
 MEDIA_EXT = {".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi",
              ".mp3", ".m4a", ".wav", ".aac", ".ogg", ".flac", ".wma"}
@@ -24,7 +25,7 @@ MEDIA_EXT = {".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi",
 
 def _provider(url: str) -> str:
     host = (urlsplit(url).hostname or "").lower()
-    if host.endswith(("youtube.com", "youtu.be", "youtube-nocookie.com")):
+    if extract_youtube_id(url):
         return "youtube"
     if host.endswith("vimeo.com"):
         return "vimeo"
@@ -184,6 +185,19 @@ def inspect(source: str, *, site_url: str = "", expected_role: str = "",
             "provenance": ["url_extension"],
         }
 
+    if extract_youtube_id(raw):
+        projected = {"recording_url": raw}
+        playback = ensure_playback(projected)
+        return {
+            "input_ref": source, "working_ref": raw, "canonical_ref": playback["youtube_url"],
+            "provider": "youtube", "media_kind": "video", "title": playback["title"],
+            "youtube_url": playback["youtube_url"], "playback": playback,
+            "source_fields": projected["source_fields"], "creator": "", "duration_seconds": None,
+            "strategy": "captions_then_platform_audio", "expected_role": expected_role,
+            "meeting_candidate": expected_role == "board_meeting",
+            "provenance": ["canonical_youtube_metadata"],
+        }
+
     info = _ytdlp_info(raw)
     if info:
         vcodec = str(info.get("vcodec") or "")
@@ -191,7 +205,7 @@ def inspect(source: str, *, site_url: str = "", expected_role: str = "",
         kind = "video" if vcodec not in ("", "none") else ("audio" if acodec not in ("", "none") else "media")
         canonical = str(info.get("webpage_url") or info.get("original_url") or raw)
         extractor = str(info.get("extractor_key") or info.get("extractor") or provider)
-        return {
+        media = {
             "input_ref": source, "working_ref": raw, "canonical_ref": canonical,
             "provider": provider if provider != "web" else extractor.lower(),
             "media_kind": kind,
@@ -203,6 +217,11 @@ def inspect(source: str, *, site_url: str = "", expected_role: str = "",
             "meeting_candidate": expected_role == "board_meeting" and kind in {"video", "audio", "media"},
             "provenance": ["yt_dlp_metadata", f"extractor:{extractor}"],
         }
+        if extract_youtube_id(canonical):
+            playback = ensure_playback({"source_media": media})
+            media.update(playback=playback, youtube_url=playback["youtube_url"],
+                         title=playback["title"], provider="youtube")
+        return media
 
     final, ctype, page = _read_page(raw)
     if ctype.startswith("video/") or ctype.startswith("audio/"):

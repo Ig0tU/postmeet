@@ -222,30 +222,44 @@
     }
     var host = this.instance.root.querySelector("[data-xs-ml-player]");
     var url = this.instance.config.media.embedUrl;
-    if (!host || !url || host.querySelector("iframe")) {
+    if (!host || !url) {
       return false;
     }
-    this.mounted = true;
+    var frameUrl;
     try {
-      this.origin = new URL(url, document.baseURI).origin;
+      frameUrl = new URL(url, document.baseURI);
+      this.origin = frameUrl.origin;
+      // Public descriptors/HTML stay canonical. API flags are transport-only.
+      if (this.kind === "youtube") {
+        frameUrl.searchParams.set("enablejsapi", "1");
+        if (window.location.origin && window.location.origin !== "null") {
+          frameUrl.searchParams.set("origin", window.location.origin);
+        }
+      }
     } catch (error) {
       return false;
     }
-    this.frame = document.createElement("iframe");
-    this.frame.src = url;
-    this.frame.title = host.getAttribute("data-player-title") || "Meeting recording";
-    this.frame.allow = "autoplay; fullscreen; picture-in-picture";
+    var existing = host.querySelector("iframe");
+    this.frame = existing || document.createElement("iframe");
+    this.frame.title = this.instance.config.media.title || host.getAttribute("data-player-title") || this.frame.title || "Meeting recording";
+    this.frame.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
     this.frame.setAttribute("allowfullscreen", "");
     this.frame.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-    host.replaceChildren(this.frame);
-    remotePlayers.push(this);
+    this.mounted = true;
+    if (remotePlayers.indexOf(this) === -1) {
+      remotePlayers.push(this);
+    }
     var provider = this;
-    this.frame.addEventListener("load", function () {
+    this.loadHandler = function () {
       provider.readyState = true;
+      if (provider.poller) {
+        window.clearInterval(provider.poller);
+      }
       if (provider.kind === "youtube") {
         provider.post({ event: "listening", id: provider.instance.config.id });
         provider.command("addEventListener", ["onStateChange"]);
         provider.poller = window.setInterval(function () {
+          provider.post({ event: "listening", id: provider.instance.config.id });
           provider.command("getCurrentTime", []);
         }, 500);
       } else if (provider.kind === "vimeo") {
@@ -254,7 +268,18 @@
         });
       }
       provider.instance.providerReady();
-    });
+    };
+    this.frame.addEventListener("load", this.loadHandler);
+    var changed = this.frame.src !== frameUrl.href;
+    if (changed) {
+      this.frame.src = frameUrl.href;
+    }
+    if (!existing) {
+      host.replaceChildren(this.frame);
+    } else if (!changed) {
+      // The server-rendered frame may have loaded before registration.
+      this.loadHandler();
+    }
     return true;
   };
   RemoteProvider.prototype.post = function (message) {
@@ -338,6 +363,7 @@
       remotePlayers.splice(index, 1);
     }
     if (this.frame) {
+      this.frame.removeEventListener("load", this.loadHandler);
       this.frame.src = "about:blank";
       this.frame.remove();
     }
@@ -749,7 +775,7 @@
       instance.provider.mount();
     } else {
       var player = root.querySelector("[data-xs-ml-player]");
-      if (player && player.getAttribute("data-xs-ml-autoload") === "true") {
+      if (player && (player.querySelector("iframe") || player.getAttribute("data-xs-ml-autoload") === "true")) {
         loadPlayer(instance);
       }
     }

@@ -3,55 +3,143 @@
   "$id": "signalmesh.meeting-lens.payload/v1",
   "title": "Meeting Lens validated payload",
   "type": "object",
-  "required": ["meeting_key", "title", "meeting_status", "items", "retention"],
+  "required": [
+    "meeting_key",
+    "title",
+    "meeting_status",
+    "items",
+    "retention"
+  ],
   "properties": {
-    "meeting_key": { "type": "string", "minLength": 1 },
-    "title": { "type": "string", "minLength": 1 },
-    "body_name": { "type": "string" },
+    "meeting_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "body_name": {
+      "type": "string"
+    },
     "meeting_type": {
       "type": "string",
-      "enum": ["regular", "special", "work-session", "hearing", "other"]
+      "enum": [
+        "regular",
+        "special",
+        "work-session",
+        "hearing",
+        "other"
+      ]
     },
     "meeting_status": {
       "type": "string",
-      "enum": ["scheduled", "live", "complete", "cancelled"]
+      "enum": [
+        "scheduled",
+        "live",
+        "complete",
+        "cancelled"
+      ]
     },
-    "starts_at": { "type": "string" },
-    "ends_at": { "type": "string" },
-    "timezone_label": { "type": "string" },
-    "location": { "type": "string" },
-    "address": { "type": "string" },
-    "summary": { "type": "string" },
-    "public_notice": { "type": "string" },
-    "accommodation_text": { "type": "string" },
-    "contact_name": { "type": "string" },
-    "contact_link": { "type": "string" },
-    "duration": { "type": "string" },
-    "recording_url": { "type": "string" },
-    "poster": { "type": "string" },
-    "captions_url": { "type": "string" },
-    "transcript_url": { "type": "string" },
+    "starts_at": {
+      "type": "string"
+    },
+    "ends_at": {
+      "type": "string"
+    },
+    "timezone_label": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "public_notice": {
+      "type": "string"
+    },
+    "accommodation_text": {
+      "type": "string"
+    },
+    "contact_name": {
+      "type": "string"
+    },
+    "contact_link": {
+      "type": "string"
+    },
+    "duration": {
+      "type": "string"
+    },
+    "recording_url": {
+      "type": "string"
+    },
+    "poster": {
+      "type": "string"
+    },
+    "captions_url": {
+      "type": "string"
+    },
+    "transcript_url": {
+      "type": "string"
+    },
     "transcript_status": {
       "type": "string",
-      "enum": ["unavailable", "auto", "reviewed", "official"]
+      "enum": [
+        "unavailable",
+        "auto",
+        "reviewed",
+        "official"
+      ]
     },
-    "transcript_language": { "type": "string" },
-    "transcript_text": { "type": "string" },
-    "primary_recording_key": { "type": "string" },
-    "initial_agenda_key": { "type": "string" },
-    "media_mode": { "type": "string" },
-    "media_provider": { "type": "string" },
+    "transcript_language": {
+      "type": "string"
+    },
+    "transcript_text": {
+      "type": "string"
+    },
+    "primary_recording_key": {
+      "type": "string"
+    },
+    "initial_agenda_key": {
+      "type": "string"
+    },
+    "media_mode": {
+      "type": "string"
+    },
+    "media_provider": {
+      "type": "string"
+    },
     "brand": {
       "type": "object",
       "properties": {
-        "primary": { "type": "string" },
-        "secondary": { "type": "string" },
-        "accent": { "type": "string" },
-        "logo_url": { "type": "string" },
-        "mascot_url": { "type": "string" },
-        "font_display": { "type": "string" },
-        "font_body": { "type": "string" },
-        "source_site": { "type": "string" }
+        "primary": {
+          "type": "string"
+        },
+        "secondary": {
+          "type": "string"
+        },
+        "accent": {
+          "type": "string"
+        },
+        "logo_url": {
+          "type": "string"
+        },
+        "mascot_url": {
+          "type": "string"
+        },
+        "font_display": {
+          "type": "string"
+        },
+        "font_body": {
+          "type": "string"
+        },
+        "source_site": {
+          "type": "string"
+        }
       }
     },
     "items": {
@@ -60,57 +148,188 @@
       "maxItems": 400,
       "items": {
         "type": "object",
-        "required": ["record_key", "record_type", "title"],
+        "required": [
+          "record_key",
+          "record_type",
+          "title"
+        ],
         "properties": {
-          "record_key": { "type": "string", "minLength": 1 },
-          "record_type": { "type": "string", "enum": ["agenda", "resource", "chapter"] },
-          "title": { "type": "string", "minLength": 1 },
-          "description": { "type": "string" },
-          "agenda_number": { "type": "string" },
-          "agenda_kind": { "type": "string" },
-          "presenter": { "type": "string" },
-          "outcome": { "type": "string" },
-          "motion_text": { "type": "string" },
-          "vote_text": { "type": "string" },
-          "parent_key": { "type": "string" },
-          "highlight": { "type": "boolean" },
-          "resource_type": { "type": "string" },
-          "link": { "type": "string" },
-          "mime_type": { "type": "string" },
-          "file_size": { "type": "string" },
-          "language": { "type": "string" },
-          "availability": { "type": "string" },
-          "start_time": { "type": "string" },
-          "end_time": { "type": "string" },
-          "agenda_key": { "type": "string" },
-          "recording_key": { "type": "string" },
-          "speaker": { "type": "string" },
-          "chapter_summary": { "type": "string" },
+          "record_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "record_type": {
+            "type": "string",
+            "enum": [
+              "agenda",
+              "resource",
+              "chapter"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "agenda_number": {
+            "type": "string"
+          },
+          "agenda_kind": {
+            "type": "string"
+          },
+          "presenter": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "motion_text": {
+            "type": "string"
+          },
+          "vote_text": {
+            "type": "string"
+          },
+          "parent_key": {
+            "type": "string"
+          },
+          "highlight": {
+            "type": "boolean"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "availability": {
+            "type": "string"
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "end_time": {
+            "type": "string"
+          },
+          "agenda_key": {
+            "type": "string"
+          },
+          "recording_key": {
+            "type": "string"
+          },
+          "speaker": {
+            "type": "string"
+          },
+          "chapter_summary": {
+            "type": "string"
+          },
           "source": {
             "type": "object",
             "properties": {
-              "kind": { "type": "string" },
-              "ref": { "type": "string" },
-              "span": { "type": "string" }
+              "kind": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              },
+              "span": {
+                "type": "string"
+              }
             }
           },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-          "verbatim": { "type": "boolean" }
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "verbatim": {
+            "type": "boolean"
+          }
         }
       }
     },
     "retention": {
       "type": "object",
-      "required": ["correlation_id", "stored_at", "stages_complete"],
+      "required": [
+        "correlation_id",
+        "stored_at",
+        "stages_complete"
+      ],
       "properties": {
-        "correlation_id": { "type": "string" },
-        "stored_at": { "type": "string" },
+        "correlation_id": {
+          "type": "string"
+        },
+        "stored_at": {
+          "type": "string"
+        },
         "stages_complete": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "artifact_path": { "type": "string" },
-        "video_deleted": { "type": "boolean" }
+        "artifact_path": {
+          "type": "string"
+        },
+        "video_deleted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "playback": {
+      "$ref": "#/$defs/playback"
+    },
+    "source_media": {
+      "type": "object",
+      "properties": {
+        "playback": {
+          "$ref": "#/$defs/playback"
+        },
+        "resolved_ref": {
+          "type": "string"
+        },
+        "working_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "source_fields": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "youtube_url": {
+          "type": "string"
+        },
+        "video_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "embed_url": {
+          "type": "string"
+        },
+        "recording_url": {
+          "type": "string"
+        },
+        "video_title": {
+          "type": "string"
+        },
+        "playback": {
+          "$ref": "#/$defs/playback"
+        }
       }
     }
   },
@@ -119,9 +338,77 @@
       "description": "Public templates must not carry closed/executive status",
       "not": {
         "properties": {
-          "meeting_status": { "enum": ["closed", "executive"] }
+          "meeting_status": {
+            "enum": [
+              "closed",
+              "executive"
+            ]
+          }
         }
       }
     }
-  ]
+  ],
+  "$defs": {
+    "playback": {
+      "type": "object",
+      "required": [
+        "provider",
+        "youtube_url",
+        "video_id",
+        "title",
+        "embed_url",
+        "recording_url"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "youtube_url": {
+          "type": "string"
+        },
+        "video_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "embed_url": {
+          "type": "string"
+        },
+        "recording_url": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "youtube"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "youtube_url": {
+                "pattern": "^https://www\\.youtube\\.com/watch\\?v=[A-Za-z0-9_-]{11}$"
+              },
+              "video_id": {
+                "pattern": "^[A-Za-z0-9_-]{11}$"
+              },
+              "title": {
+                "minLength": 1
+              },
+              "embed_url": {
+                "pattern": "^https://www\\.youtube\\.com/embed/[A-Za-z0-9_-]{11}$"
+              },
+              "recording_url": {
+                "pattern": "^https://www\\.youtube\\.com/watch\\?v=[A-Za-z0-9_-]{11}$"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
 }

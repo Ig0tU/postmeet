@@ -7,7 +7,7 @@ already expose richer source fields (channel, thumbnail, description, publish
 date, etc.).  This adapter preserves those facts as data so downstream template
 hydration does not have to scrape the source again or invent values.
 
-For YouTube-like sources we ask yt-dlp for metadata only (never the media bytes).
+YouTube playback uses canonical oEmbed metadata, with bounded yt-dlp fallback.
 For every other provider the semantic ``source_media`` descriptor remains the
 source of truth.
 """
@@ -36,8 +36,8 @@ def _ytdlp(url: str) -> Dict[str, Any]:
     try:
         proc = subprocess.run(
             [exe, "--dump-single-json", "--skip-download", "--no-warnings",
-             "--no-playlist", url],
-            capture_output=True, text=True, timeout=90,
+             "--no-playlist", "--socket-timeout", "8", "--retries", "0", url],
+            capture_output=True, text=True, timeout=20,
         )
         if proc.returncode != 0 or not proc.stdout.strip():
             return {}
@@ -120,6 +120,15 @@ def from_metadata(source_media: Mapping[str, Any], metadata: Optional[Mapping[st
         "categories": list(info.get("categories") or []),
         "license": str(info.get("license") or ""),
     }
+    from .playback import ensure_playback, extract_youtube_id, _youtube_descriptor
+    projected = {"source_media": media, "source_fields": fields}
+    video_id = extract_youtube_id(canonical)
+    # Injected platform metadata is reusable only when its ID matches the URL.
+    if (video_id and info.get("id") == video_id and
+            isinstance(info.get("title"), str) and info["title"].strip()):
+        projected["playback"] = _youtube_descriptor(video_id, info["title"])
+    ensure_playback(projected)
+    fields = projected["source_fields"]
     # Keep the object deterministic and JSON-safe while retaining explicit zero
     # counts. Empty strings/lists are useful because the template can declare a
     # field without us pretending a value exists.
@@ -128,12 +137,12 @@ def from_metadata(source_media: Mapping[str, Any], metadata: Optional[Mapping[st
 
 def extract(source_media: Mapping[str, Any], source_ref: str = "") -> Dict[str, Any]:
     media = dict(source_media or {})
-    provider = str(media.get("provider") or "").lower()
-    metadata: Dict[str, Any] = {}
-    if provider == "youtube":
-        raw = _ytdlp(str(source_ref or media.get("canonical_ref") or media.get("input_ref") or ""))
-        metadata = {k: raw.get(k) for k in YTDLP_FIELDS if k in raw}
-    return from_metadata(media, metadata)
+    if source_ref and not media.get("canonical_ref"):
+        media["canonical_ref"] = source_ref
+    fields = from_metadata(media)
+    if isinstance(source_media, dict):
+        source_media["playback"] = dict(fields["playback"])
+    return fields
 
 
 def apply(payload: Dict[str, Any], source_media: Mapping[str, Any], source_ref: str = "") -> Dict[str, Any]:
@@ -142,8 +151,19 @@ def apply(payload: Dict[str, Any], source_media: Mapping[str, Any], source_ref: 
     Existing meeting facts win.  Source metadata fills blanks; it never replaces
     a title/summary/poster that a later meeting specialist has established.
     """
-    fields = extract(source_media, source_ref)
-    payload["source_fields"] = fields
+    # Preserve a prepared descriptor instead of resolving metadata per output.
+    media = dict(source_media or {})
+    if payload.get("playback"):
+        media["playback"] = payload["playback"]
+    fields = extract(media, source_ref)
+    existing = payload.get("source_fields") or {}
+    payload["source_fields"] = {**existing, **fields}
+    if existing.get("youtube_url") and not fields.get("youtube_url"):
+        payload["source_fields"]["youtube_url"] = existing["youtube_url"]
+    payload.setdefault("source_media", media)
+    from .playback import ensure_playback
+    ensure_playback(payload)
+    fields = payload["source_fields"]
 
     aliases = {
         "poster": fields.get("thumbnail"),

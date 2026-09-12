@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
+import { finalizePublication } from "../../publication";
 import path from "path";
 
 export async function POST(request: Request) {
@@ -36,6 +37,9 @@ export async function POST(request: Request) {
         data = JSON.parse(text);
       } catch {
         data = { message: text };
+      }
+      if (response.ok && data && typeof data === "object" && "layout" in data) {
+        data = await finalizePublication(data, { youtube_url: formData.get("youtube_url"), media_url: formData.get("media_url") });
       }
       return NextResponse.json(data, { status: response.status });
     } catch (error) {

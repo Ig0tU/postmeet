@@ -3,6 +3,8 @@ import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { finalizePublication } from "../../publication";
+import { normalizeProcessRequest, pipelineArguments } from "./request";
 
 const execFileAsync = promisify(execFile);
 
@@ -10,16 +12,15 @@ export async function POST(request: Request) {
   let body: Record<string, unknown> = {};
   try {
     const raw = await request.json();
-    if (raw && typeof raw === "object") {
-      body = raw as Record<string, unknown>;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return NextResponse.json({ error: "Request body must be a JSON object." }, { status: 400 });
     }
+    body = raw as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Request body must be JSON." }, { status: 400 });
   }
 
-  const filePathStr = String(body.filePath || body.source || "").trim();
-  const youtubeUrlStr = String(body.youtubeUrl || body.youtube_url || body.media_url || "").trim();
-  const siteUrlStr = String(body.site_url || body.siteUrl || "").trim();
+  const input = normalizeProcessRequest(body);
 
   const worker = process.env.POSTMEET_WORKER_URL?.replace(/\/$/, "");
 
@@ -31,11 +32,13 @@ export async function POST(request: Request) {
       }
 
       const payload = {
-        filePath: filePathStr,
-        source: filePathStr || youtubeUrlStr,
-        youtubeUrl: youtubeUrlStr,
-        site_url: siteUrlStr,
         ...body,
+        filePath: input.filePath,
+        source: input.source,
+        youtubeUrl: input.youtubeUrl,
+        youtube_url: input.youtubeUrl,
+        media_url: input.mediaUrl,
+        site_url: input.siteUrl,
       };
 
       const response = await fetch(`${worker}/process`, {
@@ -47,43 +50,38 @@ export async function POST(request: Request) {
       const text = await response.text();
       let data: unknown;
       try { data = JSON.parse(text); } catch { data = { message: text }; }
-      return NextResponse.json(data, { status: response.status });
+      return NextResponse.json(response.ok ? await finalizePublication(data, payload) : data, { status: response.status });
     }
 
-    if (!filePathStr && !youtubeUrlStr) {
-      return NextResponse.json({ error: "A filePath or youtubeUrl must be provided." }, { status: 400 });
+    if (!input.source) {
+      return NextResponse.json({ error: "A filePath, source, youtubeUrl or media_url must be provided." }, { status: 400 });
     }
 
-    const sourceArg = filePathStr || youtubeUrlStr;
-    const outDir = path.join(process.cwd(), "upload", "tmp", `out-${Date.now()}`);
+    const tmpDir = path.join(process.cwd(), "upload", "tmp");
+    await fs.promises.mkdir(tmpDir, { recursive: true });
+    const outDir = await fs.promises.mkdtemp(path.join(tmpDir, "out-"));
 
-    const args = ["-m", "postmeet.cli", "run", sourceArg, "--output-dir", outDir];
-    if (siteUrlStr) args.push("--site-url", siteUrlStr);
-    if (youtubeUrlStr) args.push("--youtube-url", youtubeUrlStr);
-
-    await execFileAsync("python3", args, { env: { ...process.env, PYTHONPATH: process.cwd() } });
+    // Every artifact is produced together by the canonical Python pipeline.
+    // Do not independently reconstruct players, URLs or titles in TypeScript.
+    await execFileAsync("python3", pipelineArguments(input, outDir), {
+      env: { ...process.env, PYTHONPATH: process.cwd() },
+    });
 
     const layoutPath = path.join(outDir, "layout.json");
     const payloadPath = path.join(outDir, "payload.json");
     const htmlPath = path.join(outDir, "meeting.html");
     const valPath = path.join(outDir, "validation.json");
 
-    let layoutObj = null;
-    let payloadObj: Record<string, unknown> | null = null;
-    let htmlContent = "";
-    let valObj = null;
-
-    if (fs.existsSync(layoutPath)) {
-      layoutObj = JSON.parse(await fs.promises.readFile(layoutPath, "utf-8"));
-    }
-    if (fs.existsSync(payloadPath)) {
-      payloadObj = JSON.parse(await fs.promises.readFile(payloadPath, "utf-8"));
-    }
-    if (fs.existsSync(htmlPath)) {
-      htmlContent = await fs.promises.readFile(htmlPath, "utf-8");
-    }
-    if (fs.existsSync(valPath)) {
-      valObj = JSON.parse(await fs.promises.readFile(valPath, "utf-8"));
+    const manifestPath = path.join(outDir, "manifest.json");
+    const [layoutText, payloadText, htmlContent, validationText, manifestText] = await Promise.all(
+      [layoutPath, payloadPath, htmlPath, valPath, manifestPath].map((file) => fs.promises.readFile(file, "utf-8")),
+    );
+    const layoutObj = JSON.parse(layoutText);
+    const payloadObj: Record<string, unknown> = JSON.parse(payloadText);
+    const valObj = JSON.parse(validationText);
+    const manifestObj = JSON.parse(manifestText);
+    if (!valObj?.ok || !htmlContent.trim()) {
+      throw new Error("The Python pipeline did not produce validated meeting artifacts.");
     }
 
     const items = Array.isArray(payloadObj?.items) ? payloadObj.items : [];
@@ -94,6 +92,7 @@ export async function POST(request: Request) {
       layout: layoutObj,
       payload: payloadObj,
       html: htmlContent,
+      manifest: manifestObj,
       validation: valObj,
       counts: {
         items: items.length,
@@ -107,13 +106,13 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   } finally {
-    if (filePathStr) {
-      const resolved = path.isAbsolute(filePathStr)
-        ? filePathStr
-        : path.join(process.cwd(), filePathStr);
+    const processingFile = input.filePath || input.source;
+    if (processingFile) {
+      const resolved = path.resolve(process.cwd(), processingFile);
       const tmpDir = path.join(process.cwd(), "upload", "tmp");
+      const relative = path.relative(tmpDir, resolved);
 
-      if (resolved.startsWith(tmpDir) && fs.existsSync(resolved)) {
+      if (relative && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative) && fs.existsSync(resolved)) {
         try {
           await fs.promises.unlink(resolved);
         } catch {

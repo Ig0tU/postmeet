@@ -24,7 +24,7 @@ def test_hydration_fills_layout_and_preserves_items():
 
     def walk(n):
         if isinstance(n, dict):
-            if n.get("type") == "xs_meeting_lens": lens.append(n)
+            if n.get("type") == "xs_meeting_lens" or (n.get("props") or {}).get("postmeet_element") == "xs_meeting_lens": lens.append(n)
             for c in n.get("children") or []: walk(c)
         elif isinstance(n, list):
             for c in n: walk(c)
@@ -43,13 +43,13 @@ def test_youtube_id_extraction():
         ("https://www.youtube.com/embed/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
         ("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
         ("https://www.youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
-        ("dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+        ("dQw4w9WgXcQ", None),
     ]
     for url, expected_id in urls:
         assert extract_youtube_id(url) == expected_id, f"Failed for {url}"
 
 
-def test_hydration_with_youtube_url():
+def test_hydration_with_youtube_url(youtube_metadata):
     p = payload()
     p["youtube_url"] = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     layout = hydrate(preset(), p)
@@ -58,7 +58,7 @@ def test_hydration_with_youtube_url():
 
     def walk(n):
         if isinstance(n, dict):
-            if n.get("type") == "xs_meeting_lens": lens.append(n)
+            if n.get("type") == "xs_meeting_lens" or (n.get("props") or {}).get("postmeet_element") == "xs_meeting_lens": lens.append(n)
             for c in n.get("children") or []: walk(c)
         elif isinstance(n, list):
             for c in n: walk(c)
@@ -66,21 +66,23 @@ def test_hydration_with_youtube_url():
     walk(layout)
     assert len(lens) == 1
     props = lens[0]["props"]
-    assert props["recording_url"] == "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?enablejsapi=1"
+    assert props["recording_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert props["video_title"] == youtube_metadata.return_value
+    assert props["playback"]["title"] == youtube_metadata.return_value
     # Ensure transcript text and items were preserved
     assert len(lens[0]["children"]) == 2
 
 
-def test_render_with_youtube_url():
+def test_render_with_youtube_url(youtube_metadata):
     p = payload()
     p["youtube_url"] = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     html_out = render(p)
     assert 'data-xs-ml-provider="youtube"' in html_out
-    assert 'src="https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1"' in html_out
+    assert 'src="https://www.youtube.com/embed/dQw4w9WgXcQ"' in html_out
     assert '"provider":"youtube"' in html_out
 
 
-def test_pipeline_with_and_without_youtube_url(tmp_path):
+def test_pipeline_with_and_without_youtube_url(tmp_path, youtube_metadata):
     from postmeet.pipeline import run
     vtt_file = tmp_path / "sample.vtt"
     vtt_file.write_text(
@@ -98,7 +100,7 @@ def test_pipeline_with_and_without_youtube_url(tmp_path):
     assert Path(res_yt["html"]).exists()
     html_content = Path(res_yt["html"]).read_text(encoding="utf-8")
     assert 'data-xs-ml-provider="youtube"' in html_content
-    assert 'src="https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1"' in html_content
+    assert 'src="https://www.youtube.com/embed/dQw4w9WgXcQ"' in html_content
 
     layout_data = json.loads(Path(res_yt["layout"]).read_text())
 
@@ -106,10 +108,10 @@ def test_pipeline_with_and_without_youtube_url(tmp_path):
 
     def walk(n):
         if isinstance(n, dict):
-            if n.get("type") == "xs_meeting_lens": lens.append(n)
+            if n.get("type") == "xs_meeting_lens" or (n.get("props") or {}).get("postmeet_element") == "xs_meeting_lens": lens.append(n)
             for c in n.get("children") or []: walk(c)
         elif isinstance(n, list):
             for c in n: walk(c)
 
     walk(layout_data)
-    assert lens[0]["props"]["recording_url"] == "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?enablejsapi=1"
+    assert lens[0]["props"]["recording_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"

@@ -9,6 +9,7 @@ from .extraction import build_payload
 from .validation import validate
 from .hydration import hydrate
 from .render import render
+from .playback import ensure_playback, extract_youtube_id
 from .source_fields import apply as apply_source, extract as extract_source
 
 
@@ -16,7 +17,7 @@ def run(source: str, *, site_url: str = "", media_root: str = "", model: str = "
         output_dir: str = "postmeet-output", preset_path: str = "presets/meeting_lens_full.json",
         youtube_url: str = "", media_url: str = ""):
     out = Path(output_dir).expanduser().resolve(); out.mkdir(parents=True, exist_ok=True)
-    yt_url = youtube_url or media_url
+    yt_url = youtube_url or (media_url if extract_youtube_id(media_url) else "")
     media = resolve(source, site_url=site_url, media_root=media_root)
     source_fields = extract_source(media, source)
     if source_fields.get("video_title"):
@@ -52,8 +53,11 @@ def run(source: str, *, site_url: str = "", media_root: str = "", model: str = "
     if yt_url:
         payload["youtube_url"] = yt_url
         payload["source_fields"]["youtube_url"] = yt_url
+    if media_url and not yt_url:
+        payload["recording_url"] = media_url
     if brand: payload["brand"] = brand
     apply_source(payload, media, source)
+    playback = ensure_playback(payload)
 
     report = validate(payload)
     (out / "payload.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -70,7 +74,7 @@ def run(source: str, *, site_url: str = "", media_root: str = "", model: str = "
     (out / "layout.json").write_text(json.dumps(layout, indent=2, ensure_ascii=False), encoding="utf-8")
     (out / "meeting.html").write_text(render(payload), encoding="utf-8")
     manifest = {"version": 1, "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "source": source, "outputs": {"payload": "payload.json", "validation": "validation.json", "layout": "layout.json", "html": "meeting.html"},
+                "source": source, "playback": playback, "outputs": {"payload": "payload.json", "validation": "validation.json", "layout": "layout.json", "html": "meeting.html"},
                 "counts": {"items": len(payload.get("items", [])), "agenda": report.get("agenda_count", 0), "chapters": report.get("chapter_count", 0)}}
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return {"output_dir": str(out), "media": media, "asr": asr, "validation": report,

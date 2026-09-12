@@ -2,12 +2,21 @@
 
 import { ChangeEvent, DragEvent, FormEvent, useState } from "react";
 
+interface PlaybackDescriptor {
+  provider: string;
+  youtube_url?: string;
+  video_id?: string;
+  title?: string;
+  embed_url?: string;
+  recording_url?: string;
+}
+
 interface PipelineResult {
   ok?: boolean;
   message?: string;
   error?: string;
   layout?: Record<string, unknown>;
-  payload?: Record<string, unknown>;
+  payload?: Record<string, unknown> & { playback?: PlaybackDescriptor };
   html?: string;
   manifest?: Record<string, unknown>;
   validation?: Record<string, unknown>;
@@ -158,17 +167,21 @@ export default function Home() {
     try {
       let response: Response;
 
-      const effectiveYoutubeUrl = (youtubeUrl.trim() || (mode === "url" ? source.trim() : "")).trim();
+      // Keep the processing source and optional playback association separate.
+      // Python detects YouTube even when it is supplied as the direct source.
+      const effectiveYoutubeUrl = youtubeUrl.trim();
+      let uploadTarget = "/api/upload";
+      let processTarget = "/api/process";
+      try {
+        const cfg = await fetch("/api/config").then((r) => r.json());
+        if (cfg?.workerUrl) {
+          uploadTarget = `${cfg.workerUrl}/upload`;
+          processTarget = `${cfg.workerUrl}/process`;
+        }
+      } catch {}
 
-      if (file) {
+      if (mode === "upload" && file) {
         // Step 1: Upload file ephemerally
-        let uploadTarget = "/api/upload";
-        try {
-          const cfg = await fetch("/api/config").then((r) => r.json());
-          if (cfg?.workerUrl) {
-            uploadTarget = `${cfg.workerUrl}/upload`;
-          }
-        } catch {}
 
         const fd = new FormData();
         fd.append("file", file);
@@ -197,14 +210,6 @@ export default function Home() {
           response = new Response(JSON.stringify(uploadData), { status: 200 });
         } else {
           // Step 2: Trigger process endpoint with uploaded filePath & youtubeUrl
-          let processTarget = "/api/process";
-          try {
-            const cfg = await fetch("/api/config").then((r) => r.json());
-            if (cfg?.workerUrl) {
-              processTarget = `${cfg.workerUrl}/process`;
-            }
-          } catch {}
-
           response = await fetch(processTarget, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -216,7 +221,7 @@ export default function Home() {
           });
         }
       } else {
-        response = await fetch("/api/process", {
+        response = await fetch(processTarget, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -241,6 +246,17 @@ export default function Home() {
         throw new Error(data.error || data.message || "Processing failed");
       }
 
+      // A directly contacted worker may run an older package. Never expose its
+      // downloads until the canonical Python publication boundary has run.
+      if (processTarget !== "/api/process" || uploadTarget !== "/api/upload") {
+        const published = await fetch("/api/finalize", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ result: data, request: { youtube_url: effectiveYoutubeUrl, source: mode === "url" ? source.trim() : "" } }),
+        });
+        const finalized = await published.json();
+        if (!published.ok || !finalized.ok) throw new Error(finalized.error || "Publication failed");
+        data = finalized;
+      }
       setResult(data);
       if (Array.isArray((data.payload as any)?.speakers)) {
         setSpeakers(
@@ -501,6 +517,13 @@ export default function Home() {
                   {result.counts?.items ?? 0} items · {result.counts?.chapters ?? 0} chapters · {result.counts?.agenda ?? 0} agenda outcomes · {speakers.length} distinct speakers
                 </span>
               </div>
+
+              {result.payload?.playback?.provider === "youtube" && (
+                <div className="status info" role="status">
+                  <strong>YouTube playback:</strong> {result.payload.playback.title}
+                  <div>Exports use the verified YouTube recording. Uploaded media is only the processing source.</div>
+                </div>
+              )}
 
               {/* Speaker Entity Distinction Panel */}
               {speakers.length > 0 && (

@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Set
 
-from .media_ref import extract_youtube_id
+from .playback import ensure_playback, render_playback, replace_playback_html
 
 PLACEHOLDER_RE = re.compile(r"\{([A-Z0-9_]+)\}")
 _KEY_RE = re.compile(r"[^a-z0-9]+")
@@ -105,7 +105,8 @@ def projection_context(payload: Mapping[str, Any]) -> Dict[str, Any]:
     source_media > brand. A specialist can therefore correct a source title or
     poster without the platform metadata overwriting it later.
     """
-    p = dict(payload or {})
+    p = payload if isinstance(payload, dict) else dict(payload or {})
+    playback = ensure_playback(p)
     context: Dict[str, Any] = {}
 
     def absorb(data: Mapping[str, Any], *, overwrite: bool = False) -> None:
@@ -132,21 +133,15 @@ def projection_context(payload: Mapping[str, Any]) -> Dict[str, Any]:
         context.setdefault(plural, rows)
     context.setdefault("item_count", len(items))
 
-    yt_candidate = (
-        p.get("youtube_url")
-        or context.get("youtube_url")
-        or (p.get("source_fields") or {}).get("youtube_url")
-        or (p.get("source_media") or {}).get("youtube_url")
-    )
-    if yt_candidate:
-        yt_id = extract_youtube_id(yt_candidate)
-        if yt_id:
-            embed_url = f"https://www.youtube-nocookie.com/embed/{yt_id}?enablejsapi=1"
-            context["youtube_url"] = yt_candidate
-            context["youtube_id"] = yt_id
-            context["recording_url"] = embed_url
-            context["video_url"] = embed_url
-            context["media_provider"] = "youtube"
+    context["playback"] = playback
+    context["playback_html"] = render_playback(playback, p.get("poster", ""), p.get("captions_url", ""))
+    context["player_html"] = context["playback_html"]
+    if playback["provider"] == "youtube":
+        context.update(youtube_url=playback["youtube_url"], youtube_id=playback["video_id"],
+                       video_id=playback["video_id"], recording_url=playback["recording_url"],
+                       video_url=playback["youtube_url"], embed_url=playback["embed_url"],
+                       video_title=playback["title"], player_title=playback["title"],
+                       media_provider="youtube", youtube_nocookie=False, privacy_mode=False)
 
     # Stable aliases used by Vlog/channel templates in addition to Meeting Lens.
     aliases = {
@@ -215,17 +210,7 @@ def build_mapping(payload: Dict[str, Any]) -> Dict[str, str]:
     # Backward-compatible explicit names. These also document the canonical
     # Meeting Lens contract and provide defaults where a source has no value.
     brand = payload.get("brand") or {}
-    yt_candidate = (
-        payload.get("youtube_url")
-        or context.get("youtube_url")
-        or (payload.get("source_fields") or {}).get("youtube_url")
-        or (payload.get("source_media") or {}).get("youtube_url")
-    )
     rec_url = context.get("recording_url") or payload.get("recording_url", "")
-    if yt_candidate:
-        yt_id = extract_youtube_id(yt_candidate)
-        if yt_id:
-            rec_url = f"https://www.youtube-nocookie.com/embed/{yt_id}?enablejsapi=1"
 
     explicit = {
         "MEETING_KEY": payload.get("meeting_key", ""),
@@ -318,7 +303,45 @@ def _hydrate_declared_props(node: Any, context: Mapping[str, Any], replaceable: 
         _hydrate_declared_props(child, context, replaceable)
 
 
+def _canonicalize_viewers(node: Any, playback: Mapping[str, Any]) -> Any:
+    """Rewrite every embedded HTML prop, not only standard content slots."""
+    if isinstance(node, str):
+        return replace_playback_html(node, playback)
+    if isinstance(node, list):
+        return [_canonicalize_viewers(value, playback) for value in node]
+    if not isinstance(node, dict):
+        return node
+    rewritten = {key: _canonicalize_viewers(value, playback) for key, value in node.items()}
+    if playback["provider"] != "youtube":
+        return rewritten
+    props = rewritten.get("props")
+    if isinstance(props, dict):
+        kind = str(rewritten.get("type") or "").lower()
+        if kind in {"video", "youtube", "player", "media", "xs_video", "xs_video_player"}:
+            # Native YOOtheme video elements must not interpret a watch URL as MP4.
+            rewritten["type"] = "html"
+            for key in ("video", "video_url", "source", "src", "url", "poster", "autoplay", "controls"):
+                props.pop(key, None)
+            props["content"] = render_playback(playback)
+        if kind == "xs_meeting_lens":
+            props.update(playback=dict(playback), playback_html=render_playback(playback),
+                         player_html=render_playback(playback), recording_url=playback["recording_url"],
+                         embed_url=playback["embed_url"], media_provider="youtube",
+                         video_title=playback["title"], player_title=playback["title"],
+                         youtube_nocookie=False, privacy_mode=False)
+            # An older installed xs_meeting_lens template may ignore new props.
+            # Publish an actual HTML element, not a promise to use an iframe.
+            rewritten["type"] = "html"
+            props["postmeet_element"] = "xs_meeting_lens"
+        if "youtube_nocookie" in props:
+            props["youtube_nocookie"] = False
+        if "privacy_mode" in props:
+            props["privacy_mode"] = False
+    return rewritten
+
+
 def hydrate(preset: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
+    playback = ensure_playback(payload)
     context = projection_context(payload)
     replaceable = data_prop_keys(payload, context)
     layout = deep_fill(copy.deepcopy(preset), build_mapping(payload))
@@ -336,6 +359,29 @@ def hydrate(preset: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
                 # exist; accepted payload data owns their value.
                 props[key] = copy.deepcopy(context[nk])
 
+    layout = _canonicalize_viewers(layout, playback)
+    if playback["provider"] == "youtube":
+        from .render import render
+        document = render(payload)
+        # Reuse the full canonical meeting view without nesting an HTML document.
+        style = re.search(r"<style>(.*?)</style>", document, re.S).group(0)
+        body = re.search(r"<body>(.*?)</body>", document, re.S).group(1)
+        fragment = style + body
+        counter = [0]
+        def fill_content(node):
+            if isinstance(node, dict):
+                props = node.get("props") or {}
+                if props.get("postmeet_element") == "xs_meeting_lens":
+                    counter[0] += 1
+                    root = re.search(r'data-xs-ml-root="([^"]+)"', fragment).group(1)
+                    props["content"] = fragment.replace(root, root + "-layout-" + str(counter[0]))
+                for value in node.values():
+                    if isinstance(value, (dict, list)):
+                        fill_content(value)
+            elif isinstance(node, list):
+                for value in node:
+                    fill_content(value)
+        fill_content(layout)
     from datetime import datetime, timezone
     layout["version"] = "5.0.43"
     layout["modified"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

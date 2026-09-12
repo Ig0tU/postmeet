@@ -98,33 +98,9 @@ def _guard_url(url: str, site_url: str = "") -> None:
 
 
 def extract_youtube_id(url: str) -> str | None:
-    """Extract canonical 11-character YouTube ID from various URL formats.
-
-    Supports:
-    - https://www.youtube.com/watch?v=<id>
-    - https://youtu.be/<id>
-    - https://www.youtube.com/embed/<id>
-    - https://www.youtube-nocookie.com/embed/<id>
-    - https://www.youtube.com/shorts/<id>
-    - https://www.youtube.com/v/<id>
-    - Bare/direct YouTube ID string
-    """
-    u = (url or "").strip()
-    if not u:
-        return None
-    patterns = [
-        r"(?:https?://)?(?:www\.)?youtube\.com/watch\?(?:.*&)?v=([A-Za-z0-9_-]{11})",
-        r"(?:https?://)?(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{11})",
-        r"(?:https?://)?(?:www\.)?youtube\.com/shorts/([A-Za-z0-9_-]{11})",
-        r"(?:https?://)?(?:www\.)?youtube\.com/v/([A-Za-z0-9_-]{11})",
-        r"(?:https?://)?youtu\.be/([A-Za-z0-9_-]{11})",
-        r"^([A-Za-z0-9_-]{11})$",
-    ]
-    for pattern in patterns:
-        m = re.search(pattern, u)
-        if m:
-            return m.group(1)
-    return None
+    """Compatibility import; URL parsing is owned by postmeet.playback."""
+    from .playback import extract_youtube_id as canonical_parser
+    return canonical_parser(url)
 
 
 def normalize_url(url: str) -> str:
@@ -315,6 +291,14 @@ def resolve(source: str, *, site_url: str = "", media_root: str = "") -> Dict[st
                 "title": Path(urlparse(normalized).path).stem, "provider": "http",
                 "duration": 0, "kind": "direct_media", "candidate_count": 1,
                 "meeting_score": 0.0, "selection_reason": "direct media URL"}
+    if extract_youtube_id(normalized):
+        from .playback import ensure_playback
+        playback = ensure_playback({"recording_url": normalized})
+        return {"original_ref": source, "resolved_ref": normalized,
+                "canonical_ref": playback["youtube_url"], "public_ref": playback["youtube_url"],
+                "title": playback["title"], "provider": "youtube", "duration": 0,
+                "kind": "platform_media", "candidate_count": 1, "meeting_score": 0.0,
+                "selection_reason": "canonical YouTube video", "playback": playback}
     candidates = _yt_candidates(normalized)
     if not candidates:
         candidates = _html_candidates(normalized, site_url=site_url)
@@ -333,4 +317,8 @@ def resolve(source: str, *, site_url: str = "", media_root: str = "") -> Dict[st
                    "selection_reason": ("highest board/meeting semantic score, then duration"
                                         if len(ranked) > 1 else
                                         "single discovered media candidate")})
+    if extract_youtube_id(chosen.get("canonical_ref")):
+        from .playback import ensure_playback
+        playback = ensure_playback({"source_media": chosen})
+        chosen.update(playback=playback, title=playback["title"], provider="youtube")
     return chosen

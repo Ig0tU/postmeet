@@ -16,7 +16,7 @@ def main():
     inj = sub.add_parser("inject-youtube", help="Inject YouTube iframe embed into target xs-meeting-lens HTML")
     inj.add_argument("target_html", nargs="?", help="Path to target HTML file")
     inj.add_argument("--youtube-url", required=True, help="YouTube video URL")
-    inj.add_argument("--video-title", required=True, help="Title of the video/meeting")
+    inj.add_argument("--video-title", default="", help="Legacy option; exact title is resolved from YouTube metadata")
     inj.add_argument("--target-html", dest="target_html_opt", help="Path to target HTML file (optional alternative to positional)")
     inj.add_argument("-o", "--output", default="-", help="Output file path (default stdout)")
 
@@ -39,6 +39,11 @@ def main():
         print(json.dumps(result, indent=2))
         raise SystemExit(0 if result["ok"] else 1)
 
+    if args.command == "run":
+        from .pipeline import run
+        print(json.dumps(run(args.source, site_url=args.site_url, media_root=args.media_root, model=args.model, output_dir=args.output_dir, preset_path=args.preset, youtube_url=args.youtube_url, media_url=args.media_url), indent=2))
+        return
+
     payload = json.loads(Path(args.payload).read_text())
     if args.command == "render":
         Path(args.output).write_text(render(payload), encoding="utf-8")
@@ -53,8 +58,7 @@ def main():
         print(args.output)
         return
 
-    from .pipeline import run
-    print(json.dumps(run(args.source, site_url=args.site_url, media_root=args.media_root, model=args.model, output_dir=args.output_dir, preset_path=args.preset, youtube_url=args.youtube_url, media_url=args.media_url), indent=2))
+
 
 if __name__ == "__main__":
     main()
