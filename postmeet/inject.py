@@ -12,7 +12,7 @@ def inject_youtube_embed(target_html: str, youtube_url: str, video_title: str) -
     document into a dynamically generated YouTube iframe.
 
     Step 1: Extract Video ID.
-    Step 2: Replace <div class="xs-ml-player"...> container.
+    Step 2: Replace <div class="xs-ml-player" ... data-xs-ml-provider="native">.
     Step 3: Replace <div class="xs-ml-media-links"> fallback link.
     Step 4: Patch "media":{...} inside <script type="application/json" data-xs-ml-config=...>.
     """
@@ -36,7 +36,7 @@ def inject_youtube_embed(target_html: str, youtube_url: str, video_title: str) -
     )
 
     player_pattern = re.compile(
-        r'<div\b(?=[^>]*\bclass=["\']?[^"\'>]*xs-ml-player[^"\'>]*["\']?)(?:(?=[^>]*\bdata-xs-ml-provider=["\']?native["\']?)|(?=[^>]*>.*?<video\b))[^>]*>.*?</div>',
+        r'<div\b(?=[^>]*\bclass=["\']?[^"\'>]*xs-ml-player[^"\'>]*["\']?)(?=[^>]*\bdata-xs-ml-provider=["\']?native["\']?)[^>]*>.*?</div>',
         re.DOTALL
     )
     result_html = player_pattern.sub(player_replacement, result_html)
