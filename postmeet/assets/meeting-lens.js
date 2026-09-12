@@ -232,8 +232,11 @@
       // Public descriptors/HTML stay canonical. API flags are transport-only.
       if (this.kind === "youtube") {
         frameUrl.searchParams.set("enablejsapi", "1");
-        if (window.location.origin && window.location.origin !== "null") {
-          frameUrl.searchParams.set("origin", window.location.origin);
+        // YouTube rejects a file:// origin param with "Video player configuration
+        // error" (153). Only send an origin for real http(s) hosts.
+        var pageOrigin = window.location.origin || "";
+        if (pageOrigin.indexOf("http://") === 0 || pageOrigin.indexOf("https://") === 0) {
+          frameUrl.searchParams.set("origin", pageOrigin);
         }
       }
     } catch (error) {

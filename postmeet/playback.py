@@ -61,7 +61,7 @@ def extract_youtube_id(url: str) -> str | None:
 
 
 def resolve_youtube_title(youtube_url: str) -> str:
-    """Fetch exact title via bounded stdlib HTTPS oEmbed, then bounded yt-dlp.
+    """Fetch exact title via bounded YouTube oEmbed, verified mirror, then yt-dlp.
 
     Raises PlaybackMetadataError on unavailable/empty metadata. Patch this
     function for deterministic/offline tests; no global cache hides ID changes.
@@ -81,6 +81,23 @@ def resolve_youtube_title(youtube_url: str) -> str:
         title = info.get("title") if isinstance(info, dict) else None
         if isinstance(title, str) and title.strip():
             return title
+    except Exception:
+        pass
+    # Public oEmbed mirror for hosts where direct YouTube metadata is unavailable.
+    # The mirror must identify YouTube and return this exact video's URL.
+    try:
+        mirror = "https://noembed.com/embed?" + urlencode({"url": canonical})
+        request = Request(mirror, headers={"Accept": "application/json", "User-Agent": "PostMeet/1.0"})
+        with urlopen(request, timeout=OEMBED_TIMEOUT) as response:
+            raw = response.read(OEMBED_MAX_BYTES + 1)
+        if len(raw) > OEMBED_MAX_BYTES:
+            raise ValueError("Metadata mirror response exceeds size limit")
+        info = json.loads(raw.decode("utf-8"))
+        if (isinstance(info, dict) and not info.get("error")
+                and info.get("provider_name") == "YouTube"
+                and extract_youtube_id(info.get("url")) == video_id
+                and isinstance(info.get("title"), str) and info["title"].strip()):
+            return info["title"]
     except Exception:
         pass
     # Existing adapter is subprocess-bounded. Only a matching ID can supply title.
