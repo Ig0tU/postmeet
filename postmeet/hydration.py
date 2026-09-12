@@ -255,7 +255,7 @@ def build_mapping(payload: Dict[str, Any]) -> Dict[str, str]:
         "PRIMARY_RECORDING_KEY": payload.get("primary_recording_key", ""),
         "INITIAL_AGENDA_KEY": payload.get("initial_agenda_key", ""),
         "MEDIA_MODE": payload.get("media_mode", "recording"),
-        "MEDIA_PROVIDER": payload.get("media_provider", "native"),
+        "MEDIA_PROVIDER": context.get("media_provider") or payload.get("media_provider", "native"),
         "PRIMARY": brand.get("primary", "#1e3a5f"),
         "SECONDARY": brand.get("secondary", "#4a90a4"),
         "ACCENT": brand.get("accent", "#c4a35a"),
