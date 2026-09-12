@@ -12,7 +12,7 @@ def inject_youtube_embed(target_html: str, youtube_url: str, video_title: str) -
     document into a dynamically generated YouTube iframe.
 
     Step 1: Extract Video ID.
-    Step 2: Replace <div class="xs-ml-player" ... data-xs-ml-provider="native">.
+    Step 2: Replace <div class="xs-ml-player"...> container or <video> element.
     Step 3: Replace <div class="xs-ml-media-links"> fallback link.
     Step 4: Patch "media":{...} inside <script type="application/json" data-xs-ml-config=...>.
     """
@@ -36,10 +36,14 @@ def inject_youtube_embed(target_html: str, youtube_url: str, video_title: str) -
     )
 
     player_pattern = re.compile(
-        r'<div\b(?=[^>]*\bclass=["\']?[^"\'>]*xs-ml-player[^"\'>]*["\']?)(?=[^>]*\bdata-xs-ml-provider=["\']?native["\']?)[^>]*>.*?</div>',
+        r'<div\b(?=[^>]*\bclass=["\']?[^"\'>]*xs-ml-player[^"\'>]*["\']?)(?:(?=[^>]*\bdata-xs-ml-provider=["\']?native["\']?)|(?=[^>]*>.*?<video\b))[^>]*>.*?</div>',
         re.DOTALL
     )
-    result_html = player_pattern.sub(player_replacement, result_html)
+    if player_pattern.search(result_html):
+        result_html = player_pattern.sub(player_replacement, result_html)
+    else:
+        video_standalone_pattern = re.compile(r'<video\b.*?</video>', re.DOTALL)
+        result_html = video_standalone_pattern.sub(player_replacement, result_html)
 
     # Step 3: DOM Replacement (Fallback Link)
     escaped_url = html.escape(youtube_url, quote=True)
