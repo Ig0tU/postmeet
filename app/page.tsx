@@ -25,6 +25,8 @@ type TranscriptResult = {
   speakers?: Array<{ id: string; label: string; sample: string; count: number }>;
 };
 
+const VERCEL_BODY_LIMIT = 4.5 * 1024 * 1024; // 4.5 MB hard limit on Vercel functions
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -37,10 +39,22 @@ export default function Home() {
   const [transcript, setTranscript] = useState<TranscriptResult | null>(null);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
 
+  function setFileSafe(f: File | null) {
+    if (f && f.size > VERCEL_BODY_LIMIT) {
+      setStatus(
+        `File is ${(f.size / (1024 * 1024)).toFixed(1)} MB. Vercel rejects uploads over 4.5 MB. Use a shorter clip or a YouTube link instead.`
+      );
+      setStatusType("error");
+      setFile(null);
+      return;
+    }
+    setFile(f);
+    setStatus("");
+  }
+
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     if (e.target.files?.[0]) {
-      setFile(e.target.files[0]);
-      setStatus("");
+      setFileSafe(e.target.files[0]);
     }
   }
 
@@ -57,8 +71,7 @@ export default function Home() {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files?.[0]) {
-      setFile(e.dataTransfer.files[0]);
-      setStatus("");
+      setFileSafe(e.dataTransfer.files[0]);
     }
   }
 
@@ -75,6 +88,14 @@ export default function Home() {
 
     if (yt && !youtubeId) {
       setStatus("That does not look like a valid YouTube link.");
+      setStatusType("error");
+      return;
+    }
+
+    if (file && file.size > VERCEL_BODY_LIMIT) {
+      setStatus(
+        `File is too large for Vercel (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum is 4.5 MB. Try a shorter recording or a YouTube link.`
+      );
       setStatusType("error");
       return;
     }
@@ -100,10 +121,20 @@ export default function Home() {
         body: fd,
       });
 
-      const data: TranscriptResult = await response.json();
+      let data: TranscriptResult;
+      try {
+        data = await response.json();
+      } catch {
+        if (response.status === 413) {
+          throw new Error(
+            "Upload too large for the server (Vercel 4.5 MB limit). Use a shorter file or a YouTube link."
+          );
+        }
+        throw new Error(`Server error (${response.status}). Please try again.`);
+      }
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || "We could not process that recording.");
+        throw new Error(data.error || `We could not process that recording (${response.status}).`);
       }
 
       setTranscript(data);
@@ -288,7 +319,7 @@ export default function Home() {
               )}
             </div>
             <div className="dropzone-hint">
-              Works with MP3, MP4, M4A, WAV and most common audio/video formats
+              Works with MP3, MP4, M4A, WAV and most common audio/video formats (max 4.5 MB on Vercel)
             </div>
             <input
               id="file-upload-input"
