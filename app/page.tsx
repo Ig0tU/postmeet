@@ -1,6 +1,11 @@
 "use client";
 
 import { ChangeEvent, DragEvent, FormEvent, useState } from "react";
+import {
+  buildMeetingHtml,
+  extractYoutubeId,
+  toYoutubeWatchUrl,
+} from "../lib/youtube";
 
 type Speaker = {
   id: string;
@@ -22,6 +27,7 @@ type TranscriptResult = {
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -64,6 +70,13 @@ export default function Home() {
       return;
     }
 
+    const yt = youtubeUrl.trim();
+    if (yt && !extractYoutubeId(yt)) {
+      setStatus("That does not look like a valid YouTube link.");
+      setStatusType("error");
+      return;
+    }
+
     setBusy(true);
     setStatus("Uploading your recording and turning speech into text…");
     setStatusType("info");
@@ -74,6 +87,7 @@ export default function Home() {
     try {
       const fd = new FormData();
       fd.append("file", file);
+      if (yt) fd.append("youtube_url", yt);
 
       const response = await fetch("/api/transcribe", {
         method: "POST",
@@ -114,24 +128,26 @@ export default function Home() {
     );
   }
 
-  function finishWithSpeakers() {
-    setStep("done");
-    setStatus("Meeting record is ready. You can download the transcript below.");
-    setStatusType("success");
-  }
-
-  function downloadTranscript() {
-    if (!transcript?.text) return;
-
-    // Apply any renamed speakers into the text for the download
-    let finalText = transcript.text;
+  function applySpeakerNamesToText(text: string): string {
+    let finalText = text;
     speakers.forEach((s) => {
       const name = (s.customName || "").trim();
       if (name && name !== s.label) {
         finalText = finalText.split(s.label).join(name);
       }
     });
+    return finalText;
+  }
 
+  function finishWithSpeakers() {
+    setStep("done");
+    setStatus("Meeting record is ready. Download the page below — it includes the embedded video when a YouTube link was provided.");
+    setStatusType("success");
+  }
+
+  function downloadTranscript() {
+    if (!transcript?.text) return;
+    const finalText = applySpeakerNamesToText(transcript.text);
     const blob = new Blob([finalText], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -143,13 +159,38 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadMeetingPage() {
+    if (!transcript?.text) return;
+    const finalText = applySpeakerNamesToText(transcript.text);
+    const videoId = extractYoutubeId(youtubeUrl);
+    const html = buildMeetingHtml({
+      title: "Board Meeting Record",
+      youtubeUrl: youtubeUrl.trim() || undefined,
+      videoId,
+      transcriptText: finalText,
+      speakers,
+    });
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "meeting-record.html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function reset() {
     setFile(null);
+    setYoutubeUrl("");
     setTranscript(null);
     setSpeakers([]);
     setStatus("");
     setStep("upload");
   }
+
+  const hasYoutube = Boolean(extractYoutubeId(youtubeUrl));
 
   return (
     <main className="shell">
@@ -165,15 +206,58 @@ export default function Home() {
           <div className="eyebrow">For school boards & public meetings</div>
           <h1>Turn a meeting recording into a clear, trustworthy record.</h1>
           <p className="lede">
-            Upload the audio or video of your meeting. PostMeet creates a timestamped
-            transcript and helps you label who is speaking — so parents, staff, and the
-            public get an accurate record.
+            Upload the audio or video of your meeting. Optionally add the YouTube
+            link so the final page embeds the recording. Review speakers, then
+            download a complete meeting page.
           </p>
         </div>
 
         <form className="card" onSubmit={submit}>
           <h2>Upload your meeting</h2>
-          <p>Choose the recording from your computer. We handle the rest.</p>
+          <p>Choose the recording from your computer. Add a YouTube link if the public version lives there.</p>
+
+          <div style={{ marginBottom: 16 }}>
+            <label
+              htmlFor="youtube-url"
+              style={{
+                display: "block",
+                marginBottom: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#78716c",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              YouTube link (optional)
+            </label>
+            <input
+              id="youtube-url"
+              className="input"
+              value={youtubeUrl}
+              onChange={(e) => setYoutubeUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=…"
+              type="url"
+            />
+            {youtubeUrl.trim() && !hasYoutube && (
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "#991b1b" }}>
+                That does not look like a valid YouTube link.
+              </p>
+            )}
+            {hasYoutube && (
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "#57534e" }}>
+                The finished page will embed this recording.{" "}
+                <a
+                  href={toYoutubeWatchUrl(extractYoutubeId(youtubeUrl)!)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "#44403c" }}
+                >
+                  Preview on YouTube
+                </a>
+              </p>
+            )}
+          </div>
 
           <div
             className={`dropzone ${isDragging ? "dragover" : ""}`}
@@ -213,21 +297,16 @@ export default function Home() {
             </button>
           </div>
 
-          {status && (
-            <div className={`status ${statusType}`}>
-              {status}
-            </div>
-          )}
+          {status && <div className={`status ${statusType}`}>{status}</div>}
 
-          {/* Speaker review step */}
           {step === "review" && speakers.length > 0 && (
             <div className="results-panel">
               <div className="results-header">
                 <h3>Who is speaking?</h3>
               </div>
-              <p style={{ margin: "0 0 12px", color: "#64748b", fontSize: "14px" }}>
-                We detected these speakers. You can rename them (for example “Board
-                President” or “Dr. Ramirez”). Leave a name as-is if you’re not sure.
+              <p style={{ margin: "0 0 12px", color: "#78716c", fontSize: 14 }}>
+                We detected these speakers. Rename them if you know who they are.
+                Leave a name as-is if you are not sure.
               </p>
 
               <div className="speaker-grid">
@@ -249,34 +328,29 @@ export default function Home() {
               </div>
 
               <div className="actions">
-                <button
-                  className="primary"
-                  type="button"
-                  onClick={finishWithSpeakers}
-                >
+                <button className="primary" type="button" onClick={finishWithSpeakers}>
                   Save names & finish
                 </button>
               </div>
             </div>
           )}
 
-          {/* Done state */}
           {step === "done" && transcript && (
             <div className="results-panel">
               <div className="results-header">
-                <h3>Your meeting transcript is ready</h3>
+                <h3>Your meeting record is ready</h3>
               </div>
-              <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: "14px" }}>
-                Download the timestamped transcript below. Speaker names you entered
-                have been applied.
+              <p style={{ margin: "0 0 16px", color: "#78716c", fontSize: 14 }}>
+                {hasYoutube
+                  ? "The HTML page includes the embedded YouTube video plus your transcript with speaker names applied."
+                  : "Download the transcript, or add a YouTube link next time to include the embedded video in the page."}
               </p>
               <div className="download-grid">
-                <button
-                  className="dl-btn primary"
-                  type="button"
-                  onClick={downloadTranscript}
-                >
-                  Download transcript
+                <button className="dl-btn primary" type="button" onClick={downloadMeetingPage}>
+                  Download meeting page (HTML)
+                </button>
+                <button className="dl-btn" type="button" onClick={downloadTranscript}>
+                  Download transcript only
                 </button>
               </div>
             </div>
@@ -287,7 +361,7 @@ export default function Home() {
       <section className="pipeline">
         <div className="step">
           <b>1. Upload</b>
-          <span>Drop the recording of your board meeting.</span>
+          <span>Drop the recording. Optionally add the YouTube link.</span>
         </div>
         <div className="step">
           <b>2. Transcript</b>
@@ -299,7 +373,7 @@ export default function Home() {
         </div>
         <div className="step">
           <b>4. Record</b>
-          <span>Download a trustworthy meeting record.</span>
+          <span>Download a page with video embed + transcript.</span>
         </div>
       </section>
 
