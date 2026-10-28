@@ -1,58 +1,49 @@
 import { NextResponse } from "next/server";
 import { transcribeWithGroq } from "../../../lib/groq-transcribe";
 import { extractYoutubeId } from "../../../lib/youtube";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import fs from "fs/promises";
-import os from "os";
-import path from "path";
-
-const execFileAsync = promisify(execFile);
+import { Innertube, Platform } from "youtubei.js";
 
 export const maxDuration = 300; // Allow longer meetings on Vercel Pro / Fluid
+
+// Enable JS evaluation for signature deciphering (required for some streams)
+Platform.shim.eval = async (data: { output: string }) => {
+  // eslint-disable-next-line no-new-func
+  return new Function(data.output)();
+};
 
 async function downloadYoutubeAudio(
   videoId: string
 ): Promise<{ buffer: Buffer; filename: string }> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "postmeet-yt-"));
-  const outTemplate = path.join(tmpDir, "audio.%(ext)s");
-  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const yt = await Innertube.create({
+    generate_session_locally: true,
+  });
 
-  try {
-    await execFileAsync(
-      "yt-dlp",
-      [
-        "-f",
-        "bestaudio/best",
-        "--extract-audio",
-        "--audio-format",
-        "mp3",
-        "--audio-quality",
-        "0",
-        "--no-playlist",
-        "--no-warnings",
-        "-o",
-        outTemplate,
-        url,
-      ],
-      { timeout: 180000 }
-    );
+  const info = await yt.getInfo(videoId);
+  const formats = info.streaming_data?.adaptive_formats || [];
 
-    const files = await fs.readdir(tmpDir);
-    const audioFile = files.find((f) => f.startsWith("audio."));
-    if (!audioFile) {
-      throw new Error("yt-dlp did not produce an audio file");
-    }
-    const fullPath = path.join(tmpDir, audioFile);
-    const buffer = await fs.readFile(fullPath);
-    return { buffer, filename: audioFile };
-  } finally {
-    try {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
-    }
+  // Prefer highest bitrate audio-only format
+  const audioFormats = formats
+    .filter((f) => f.mime_type?.startsWith("audio/"))
+    .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+  const best = audioFormats[0];
+  if (!best?.url) {
+    throw new Error("No downloadable audio stream found for this video");
   }
+
+  const response = await fetch(best.url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch audio stream (${response.status})`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const ext = best.mime_type?.includes("mp4") ? "m4a" : "webm";
+  return {
+    buffer,
+    filename: `youtube-${videoId}.${ext}`,
+  };
 }
 
 export async function POST(request: Request) {
@@ -78,7 +69,7 @@ export async function POST(request: Request) {
       filename =
         file instanceof File && file.name ? file.name : filename;
     } else if (youtubeId) {
-      // YouTube-only path: pull audio with yt-dlp
+      // YouTube-only path: pure JS fetch via youtubei.js (works on Vercel)
       try {
         const { buffer, filename: dlName } = await downloadYoutubeAudio(youtubeId);
         if (buffer.length > 100 * 1024 * 1024) {
@@ -90,7 +81,10 @@ export async function POST(request: Request) {
             { status: 400 }
           );
         }
-        audioBlob = new Blob([buffer], { type: "audio/mpeg" });
+        // Cast to satisfy BlobPart typing (Buffer is a Uint8Array under the hood)
+        audioBlob = new Blob([buffer as unknown as BlobPart], {
+          type: "audio/mpeg",
+        });
         filename = dlName || `youtube-${youtubeId}.mp3`;
       } catch (dlErr) {
         console.error("YouTube audio download failed:", dlErr);
@@ -98,7 +92,7 @@ export async function POST(request: Request) {
           {
             ok: false,
             error:
-              "Could not download audio from YouTube. Ensure yt-dlp is installed and available on the server, or upload a local file instead.",
+              "Could not download audio from YouTube. The video may be restricted, private, or unavailable. Try a different link or upload a local file.",
           },
           { status: 422 }
         );
