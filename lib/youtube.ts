@@ -158,7 +158,7 @@ export function buildMeetingHtml(opts: {
     "      PostMeet — evidence-bound meeting records",
     "      <br />",
     "      Brought to you by:",
-    '      <a href="https://onetechnologies.com" target="_blank" rel="noopener noreferrer">OneTechnologies</a>',
+    '      <a href="https://www.onetechnologies.com" target="_blank" rel="noopener noreferrer">OneTechnologies</a>',
     "      &",
     '      <a href="https://mamboschools.com" target="_blank" rel="noopener noreferrer">MamboSchools</a>',
     "    </footer>",
