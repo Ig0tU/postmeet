@@ -141,7 +141,9 @@ export default function Home() {
 
   function finishWithSpeakers() {
     setStep("done");
-    setStatus("Meeting record is ready. Download the page below — it includes the embedded video when a YouTube link was provided.");
+    setStatus(
+      "Meeting record is ready. Download the page below — it includes the embedded video when a YouTube link was provided."
+    );
     setStatusType("success");
   }
 
@@ -214,7 +216,10 @@ export default function Home() {
 
         <form className="card" onSubmit={submit}>
           <h2>Upload your meeting</h2>
-          <p>Choose the recording from your computer. Add a YouTube link if the public version lives there.</p>
+          <p>
+            Choose the recording from your computer. Add a YouTube link if the
+            public version lives there.
+          </p>
 
           <div style={{ marginBottom: 16 }}>
             <label
@@ -378,7 +383,29 @@ export default function Home() {
       </section>
 
       <footer className="footer">
-        PostMeet · Evidence-bound meeting records for schools and public bodies
+        <div>
+          PostMeet · Evidence-bound meeting records for schools and public bodies
+        </div>
+        <div style={{ marginTop: 8 }}>
+          Built for{" "}
+          <a
+            href="https://mamboschools.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#57534e", textDecoration: "underline" }}
+          >
+            Mambo Schools
+          </a>
+          {" "}by{" "}
+          <a
+            href="https://onetechnologies.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#57534e", textDecoration: "underline" }}
+          >
+            One Technologies
+          </a>
+        </div>
       </footer>
     </main>
   );
