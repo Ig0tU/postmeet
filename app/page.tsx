@@ -389,7 +389,7 @@ export default function Home() {
         <div style={{ marginTop: 8 }}>
           Brought to you by:{" "}
           <a
-            href="https://onetechnologies.com"
+            href="https://www.onetechnologies.com"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: "#57534e", textDecoration: "underline" }}
