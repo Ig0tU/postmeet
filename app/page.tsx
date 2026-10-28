@@ -387,23 +387,23 @@ export default function Home() {
           PostMeet · Evidence-bound meeting records for schools and public bodies
         </div>
         <div style={{ marginTop: 8 }}>
-          Built for{" "}
-          <a
-            href="https://mamboschools.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "#57534e", textDecoration: "underline" }}
-          >
-            Mambo Schools
-          </a>
-          {" "}by{" "}
+          Brought to you by:{" "}
           <a
             href="https://onetechnologies.com"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: "#57534e", textDecoration: "underline" }}
           >
-            One Technologies
+            OneTechnologies
+          </a>
+          {" "}&{" "}
+          <a
+            href="https://mamboschools.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#57534e", textDecoration: "underline" }}
+          >
+            MamboSchools
           </a>
         </div>
       </footer>
