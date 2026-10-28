@@ -15,7 +15,11 @@ export function extractYoutubeId(input: string): string | null {
       return id && /^[\w-]{11}$/.test(id) ? id : null;
     }
 
-    if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+    if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "music.youtube.com"
+    ) {
       const v = url.searchParams.get("v");
       if (v && /^[\w-]{11}$/.test(v)) return v;
 
@@ -44,6 +48,15 @@ export function toYoutubeEmbedUrl(videoId: string): string {
   return `https://www.youtube.com/embed/${videoId}`;
 }
 
+function escapeHtml(value: string): string {
+  return String(value || "")
+    .replace(/&/g, "&")
+    .replace(/</g, "<")
+    .replace(/>/g, ">")
+    .replace(/"/g, """)
+    .replace(/'/g, "&#39;");
+}
+
 export function buildMeetingHtml(opts: {
   title?: string;
   youtubeUrl?: string;
@@ -52,7 +65,8 @@ export function buildMeetingHtml(opts: {
   speakers?: Array<{ label: string; customName?: string }>;
 }): string {
   const title = opts.title || "Meeting Record";
-  const videoId = opts.videoId || (opts.youtubeUrl ? extractYoutubeId(opts.youtubeUrl) : null);
+  const videoId =
+    opts.videoId || (opts.youtubeUrl ? extractYoutubeId(opts.youtubeUrl) : null);
   const watchUrl = videoId ? toYoutubeWatchUrl(videoId) : opts.youtubeUrl || "";
   const embedUrl = videoId ? toYoutubeEmbedUrl(videoId) : "";
 
@@ -137,13 +151,4 @@ export function buildMeetingHtml(opts: {
   </div>
 </body>
 </html>`;
-}
-
-function escapeHtml(value: string): string {
-  return String(value || "")
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, """)
-    .replace(/'/g, "&#39;");
 }
