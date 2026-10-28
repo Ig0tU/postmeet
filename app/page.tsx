@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, DragEvent, FormEvent, useState } from "react";
+import { upload } from "@vercel/blob/client";
 import {
   buildMeetingHtml,
   extractYoutubeId,
@@ -25,8 +26,6 @@ type TranscriptResult = {
   speakers?: Array<{ id: string; label: string; sample: string; count: number }>;
 };
 
-const VERCEL_BODY_LIMIT = 4.5 * 1024 * 1024; // 4.5 MB hard limit on Vercel functions
-
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -39,22 +38,10 @@ export default function Home() {
   const [transcript, setTranscript] = useState<TranscriptResult | null>(null);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
 
-  function setFileSafe(f: File | null) {
-    if (f && f.size > VERCEL_BODY_LIMIT) {
-      setStatus(
-        `File is ${(f.size / (1024 * 1024)).toFixed(1)} MB. Vercel rejects uploads over 4.5 MB. Use a shorter clip or a YouTube link instead.`
-      );
-      setStatusType("error");
-      setFile(null);
-      return;
-    }
-    setFile(f);
-    setStatus("");
-  }
-
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     if (e.target.files?.[0]) {
-      setFileSafe(e.target.files[0]);
+      setFile(e.target.files[0]);
+      setStatus("");
     }
   }
 
@@ -71,7 +58,8 @@ export default function Home() {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files?.[0]) {
-      setFileSafe(e.dataTransfer.files[0]);
+      setFile(e.dataTransfer.files[0]);
+      setStatus("");
     }
   }
 
@@ -92,29 +80,34 @@ export default function Home() {
       return;
     }
 
-    if (file && file.size > VERCEL_BODY_LIMIT) {
-      setStatus(
-        `File is too large for Vercel (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum is 4.5 MB. Try a shorter recording or a YouTube link.`
-      );
-      setStatusType("error");
-      return;
-    }
-
     setBusy(true);
-    setStatus(
-      file
-        ? "Uploading your recording and turning speech into text…"
-        : "Fetching audio from YouTube and turning speech into text…"
-    );
-    setStatusType("info");
     setTranscript(null);
     setSpeakers([]);
     setStep("upload");
 
     try {
       const fd = new FormData();
-      if (file) fd.append("file", file);
-      if (yt) fd.append("youtube_url", yt);
+
+      if (file) {
+        setStatus(`Uploading ${(file.size / (1024 * 1024)).toFixed(1)} MB to storage…`);
+        setStatusType("info");
+
+        const blob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/blob/upload",
+        });
+
+        fd.append("blob_url", blob.url);
+        setStatus("Upload complete. Turning speech into text…");
+      }
+
+      if (yt) {
+        fd.append("youtube_url", yt);
+        if (!file) {
+          setStatus("Fetching audio from YouTube and turning speech into text…");
+          setStatusType("info");
+        }
+      }
 
       const response = await fetch("/api/transcribe", {
         method: "POST",
@@ -125,11 +118,6 @@ export default function Home() {
       try {
         data = await response.json();
       } catch {
-        if (response.status === 413) {
-          throw new Error(
-            "Upload too large for the server (Vercel 4.5 MB limit). Use a shorter file or a YouTube link."
-          );
-        }
         throw new Error(`Server error (${response.status}). Please try again.`);
       }
 
@@ -319,7 +307,7 @@ export default function Home() {
               )}
             </div>
             <div className="dropzone-hint">
-              Works with MP3, MP4, M4A, WAV and most common audio/video formats (max 4.5 MB on Vercel)
+              Works with MP3, MP4, M4A, WAV and most common audio/video formats (uploaded directly to storage)
             </div>
             <input
               id="file-upload-input"
