@@ -6,7 +6,6 @@ import { Innertube, Platform } from "youtubei.js";
 export const maxDuration = 300; // Allow longer meetings on Vercel Pro / Fluid
 
 // Enable JS evaluation for signature deciphering (required for some streams)
-// Signature matches the type expected by youtubei.js Platform.shim.eval
 Platform.shim.eval = (code: string, _env?: Record<string, unknown>) => {
   // eslint-disable-next-line no-new-func
   return new Function(code)();
@@ -22,7 +21,6 @@ async function downloadYoutubeAudio(
   const info = await yt.getInfo(videoId);
   const formats = info.streaming_data?.adaptive_formats || [];
 
-  // Prefer highest bitrate audio-only format
   const audioFormats = formats
     .filter((f) => f.mime_type?.startsWith("audio/"))
     .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
@@ -47,30 +45,62 @@ async function downloadYoutubeAudio(
   };
 }
 
+async function fetchBlobAsFile(
+  blobUrl: string,
+  filename: string
+): Promise<Blob> {
+  const response = await fetch(blobUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch uploaded file (${response.status})`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return new Blob([arrayBuffer], {
+    type: response.headers.get("content-type") || "audio/mpeg",
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const blobUrl = String(formData.get("blob_url") || "").trim();
     const youtubeUrl = String(formData.get("youtube_url") || "").trim();
     const youtubeId = youtubeUrl ? extractYoutubeId(youtubeUrl) : null;
 
     let audioBlob: Blob | File | null = null;
     let filename = "meeting-audio.mp3";
 
-    if (file && file instanceof Blob) {
-      // Local file path (existing behavior)
-      const maxBytes = 100 * 1024 * 1024; // 100 MB
+    if (blobUrl) {
+      // Preferred path: file already uploaded to Vercel Blob
+      try {
+        audioBlob = await fetchBlobAsFile(blobUrl, filename);
+        const urlName = new URL(blobUrl).pathname.split("/").pop() || filename;
+        filename = urlName;
+      } catch (err) {
+        console.error("Blob fetch failed:", err);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Could not retrieve the uploaded file. Please try again.",
+          },
+          { status: 422 }
+        );
+      }
+    } else if (file && file instanceof Blob) {
+      // Direct upload (small files only; Vercel rejects > 4.5 MB before we get here)
+      const maxBytes = 4.5 * 1024 * 1024;
       if (file.size > maxBytes) {
         return NextResponse.json(
-          { error: "File is too large. Please upload a file under 100 MB." },
+          {
+            error:
+              "File is too large for direct upload. The app should have sent it via Blob.",
+          },
           { status: 400 }
         );
       }
       audioBlob = file;
-      filename =
-        file instanceof File && file.name ? file.name : filename;
+      filename = file instanceof File && file.name ? file.name : filename;
     } else if (youtubeId) {
-      // YouTube-only path: pure JS fetch via youtubei.js (works on Vercel)
       try {
         const { buffer, filename: dlName } = await downloadYoutubeAudio(youtubeId);
         if (buffer.length > 100 * 1024 * 1024) {
@@ -82,7 +112,6 @@ export async function POST(request: Request) {
             { status: 400 }
           );
         }
-        // Cast to satisfy BlobPart typing (Buffer is a Uint8Array under the hood)
         audioBlob = new Blob([buffer as unknown as BlobPart], {
           type: "audio/mpeg",
         });
@@ -122,8 +151,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Simple speaker clustering heuristic for the review step
-    // (Real diarization can be layered later; this gives users something useful to approve/rename)
     const speakers = inferSpeakers(result.cues);
 
     return NextResponse.json({
@@ -148,10 +175,7 @@ export async function POST(request: Request) {
   }
 }
 
-/** Very lightweight speaker inference so the UI can offer rename/approve. */
 function inferSpeakers(cues: Array<{ start: number; text: string }>) {
-  // Group roughly every 45–90 seconds of continuous speech as a potential speaker turn
-  // This is a placeholder until full diarization is added.
   const groups: Array<{ id: string; label: string; sample: string; count: number }> = [];
   let current: { texts: string[]; start: number } | null = null;
   let speakerIndex = 1;
@@ -164,7 +188,6 @@ function inferSpeakers(cues: Array<{ start: number; text: string }>) {
 
     const gap = cue.start - current.start;
     if (gap > 55 || current.texts.length > 12) {
-      // Close previous group
       const sample = current.texts.slice(0, 2).join(" ").slice(0, 140);
       groups.push({
         id: `spk-${speakerIndex}`,
@@ -188,6 +211,5 @@ function inferSpeakers(cues: Array<{ start: number; text: string }>) {
     });
   }
 
-  // Cap at a reasonable number for the review UI
   return groups.slice(0, 12);
 }
