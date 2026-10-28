@@ -30,10 +30,10 @@ function formatStamp(seconds: number): string {
 
 /**
  * Transcribe an audio/video file using Groq Whisper.
- * Accepts a File, Blob, or Buffer.
+ * Accepts a File or Blob.
  */
 export async function transcribeWithGroq(
-  file: File | Blob | Buffer,
+  file: File | Blob,
   filename = "audio.mp3"
 ): Promise<TranscriptResult> {
   const apiKey = process.env.GROQ_API_KEY;
@@ -48,27 +48,21 @@ export async function transcribeWithGroq(
 
   try {
     const form = new FormData();
-
-    // Normalize input into a Blob/File the FormData can accept
-    let blob: Blob;
-    if (file instanceof Buffer) {
-      blob = new Blob([file]);
-    } else {
-      blob = file;
-    }
-
-    form.append("file", blob, filename);
+    form.append("file", file, filename);
     form.append("model", "whisper-large-v3-turbo");
     form.append("response_format", "verbose_json");
     form.append("timestamp_granularities[]", "segment");
 
-    const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: form,
-    });
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: form,
+      }
+    );
 
     if (!response.ok) {
       const errText = await response.text();
