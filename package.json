@@ -10,7 +10,8 @@
   "dependencies": {
     "next": "15.5.24",
     "react": "19.1.2",
-    "react-dom": "19.1.2"
+    "react-dom": "19.1.2",
+    "youtubei.js": "^13.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
