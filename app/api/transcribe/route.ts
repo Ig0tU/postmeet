@@ -6,9 +6,10 @@ import { Innertube, Platform } from "youtubei.js";
 export const maxDuration = 300; // Allow longer meetings on Vercel Pro / Fluid
 
 // Enable JS evaluation for signature deciphering (required for some streams)
-Platform.shim.eval = async (data: { output: string }) => {
+// Signature matches the type expected by youtubei.js Platform.shim.eval
+Platform.shim.eval = (code: string, _env?: Record<string, unknown>) => {
   // eslint-disable-next-line no-new-func
-  return new Function(data.output)();
+  return new Function(code)();
 };
 
 async function downloadYoutubeAudio(
