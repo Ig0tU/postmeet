@@ -64,21 +64,27 @@ export default function Home() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!file) {
-      setStatus("Please choose a meeting recording first.");
+    const yt = youtubeUrl.trim();
+    const youtubeId = extractYoutubeId(yt);
+
+    if (!file && !youtubeId) {
+      setStatus("Please choose a meeting recording or paste a YouTube link.");
       setStatusType("error");
       return;
     }
 
-    const yt = youtubeUrl.trim();
-    if (yt && !extractYoutubeId(yt)) {
+    if (yt && !youtubeId) {
       setStatus("That does not look like a valid YouTube link.");
       setStatusType("error");
       return;
     }
 
     setBusy(true);
-    setStatus("Uploading your recording and turning speech into text…");
+    setStatus(
+      file
+        ? "Uploading your recording and turning speech into text…"
+        : "Fetching audio from YouTube and turning speech into text…"
+    );
     setStatusType("info");
     setTranscript(null);
     setSpeakers([]);
@@ -86,7 +92,7 @@ export default function Home() {
 
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      if (file) fd.append("file", file);
       if (yt) fd.append("youtube_url", yt);
 
       const response = await fetch("/api/transcribe", {
@@ -294,7 +300,7 @@ export default function Home() {
           </div>
 
           <div className="actions">
-            <button className="primary" disabled={busy || !file} type="submit">
+            <button className="primary" disabled={busy || (!file && !hasYoutube)} type="submit">
               {busy ? "Working on your meeting…" : "Create transcript"}
             </button>
             <button className="secondary" type="button" onClick={reset}>
