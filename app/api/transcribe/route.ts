@@ -1,35 +1,119 @@
 import { NextResponse } from "next/server";
 import { transcribeWithGroq } from "../../../lib/groq-transcribe";
+import { extractYoutubeId } from "../../../lib/youtube";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+
+const execFileAsync = promisify(execFile);
 
 export const maxDuration = 300; // Allow longer meetings on Vercel Pro / Fluid
+
+async function downloadYoutubeAudio(
+  videoId: string
+): Promise<{ buffer: Buffer; filename: string }> {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "postmeet-yt-"));
+  const outTemplate = path.join(tmpDir, "audio.%(ext)s");
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  try {
+    await execFileAsync(
+      "yt-dlp",
+      [
+        "-f",
+        "bestaudio/best",
+        "--extract-audio",
+        "--audio-format",
+        "mp3",
+        "--audio-quality",
+        "0",
+        "--no-playlist",
+        "--no-warnings",
+        "-o",
+        outTemplate,
+        url,
+      ],
+      { timeout: 180000 }
+    );
+
+    const files = await fs.readdir(tmpDir);
+    const audioFile = files.find((f) => f.startsWith("audio."));
+    if (!audioFile) {
+      throw new Error("yt-dlp did not produce an audio file");
+    }
+    const fullPath = path.join(tmpDir, audioFile);
+    const buffer = await fs.readFile(fullPath);
+    return { buffer, filename: audioFile };
+  } finally {
+    try {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+}
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const youtubeUrl = String(formData.get("youtube_url") || "").trim();
+    const youtubeId = youtubeUrl ? extractYoutubeId(youtubeUrl) : null;
 
-    if (!file || !(file instanceof Blob)) {
+    let audioBlob: Blob | File | null = null;
+    let filename = "meeting-audio.mp3";
+
+    if (file && file instanceof Blob) {
+      // Local file path (existing behavior)
+      const maxBytes = 100 * 1024 * 1024; // 100 MB
+      if (file.size > maxBytes) {
+        return NextResponse.json(
+          { error: "File is too large. Please upload a file under 100 MB." },
+          { status: 400 }
+        );
+      }
+      audioBlob = file;
+      filename =
+        file instanceof File && file.name ? file.name : filename;
+    } else if (youtubeId) {
+      // YouTube-only path: pull audio with yt-dlp
+      try {
+        const { buffer, filename: dlName } = await downloadYoutubeAudio(youtubeId);
+        if (buffer.length > 100 * 1024 * 1024) {
+          return NextResponse.json(
+            {
+              error:
+                "Downloaded audio is too large. Please try a shorter video or upload a local file.",
+            },
+            { status: 400 }
+          );
+        }
+        audioBlob = new Blob([buffer], { type: "audio/mpeg" });
+        filename = dlName || `youtube-${youtubeId}.mp3`;
+      } catch (dlErr) {
+        console.error("YouTube audio download failed:", dlErr);
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Could not download audio from YouTube. Ensure yt-dlp is installed and available on the server, or upload a local file instead.",
+          },
+          { status: 422 }
+        );
+      }
+    } else {
       return NextResponse.json(
-        { error: "Please upload an audio or video file." },
+        {
+          error:
+            "Please upload an audio or video file, or provide a valid YouTube link.",
+        },
         { status: 400 }
       );
     }
 
-    // Basic size guard (Groq free tier is generous but we keep a safety limit)
-    const maxBytes = 100 * 1024 * 1024; // 100 MB
-    if (file.size > maxBytes) {
-      return NextResponse.json(
-        { error: "File is too large. Please upload a file under 100 MB." },
-        { status: 400 }
-      );
-    }
-
-    const filename =
-      file instanceof File && file.name
-        ? file.name
-        : "meeting-audio.mp3";
-
-    const result = await transcribeWithGroq(file, filename);
+    const result = await transcribeWithGroq(audioBlob, filename);
 
     if (result.error || result.source === "none") {
       return NextResponse.json(
