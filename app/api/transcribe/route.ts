@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
+import { get } from "@vercel/blob";
 import { transcribeWithGroq } from "../../../lib/groq-transcribe";
 import { extractYoutubeId } from "../../../lib/youtube";
 import { Innertube, Platform } from "youtubei.js";
 
-export const maxDuration = 300; // Allow longer meetings on Vercel Pro / Fluid
+export const maxDuration = 300;
 
-// Enable JS evaluation for signature deciphering (required for some streams)
 Platform.shim.eval = (code: string, _env?: Record<string, unknown>) => {
   // eslint-disable-next-line no-new-func
   return new Function(code)();
@@ -45,18 +45,35 @@ async function downloadYoutubeAudio(
   };
 }
 
-async function fetchBlobAsFile(
-  blobUrl: string,
-  filename: string
-): Promise<Blob> {
-  const response = await fetch(blobUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch uploaded file (${response.status})`);
+async function fetchBlobAsFile(blobUrl: string): Promise<Blob> {
+  // Private blobs require authenticated access. Use the SDK so OIDC or
+  // BLOB_READ_WRITE_TOKEN is applied automatically.
+  const result = await get(blobUrl, { access: "private" });
+  if (!result || result.statusCode !== 200 || !result.stream) {
+    throw new Error(
+      `Failed to retrieve private blob (${result?.statusCode || "unknown"})`
+    );
   }
-  const arrayBuffer = await response.arrayBuffer();
-  return new Blob([arrayBuffer], {
-    type: response.headers.get("content-type") || "audio/mpeg",
-  });
+
+  const chunks: Uint8Array[] = [];
+  const reader = result.stream.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+
+  const contentType =
+    result.blob.contentType || "application/octet-stream";
+  return new Blob([out], { type: contentType });
 }
 
 export async function POST(request: Request) {
@@ -71,9 +88,8 @@ export async function POST(request: Request) {
     let filename = "meeting-audio.mp3";
 
     if (blobUrl) {
-      // Preferred path: file already uploaded to Vercel Blob
       try {
-        audioBlob = await fetchBlobAsFile(blobUrl, filename);
+        audioBlob = await fetchBlobAsFile(blobUrl);
         const urlName = new URL(blobUrl).pathname.split("/").pop() || filename;
         filename = urlName;
       } catch (err) {
@@ -81,13 +97,13 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             ok: false,
-            error: "Could not retrieve the uploaded file. Please try again.",
+            error:
+              "Could not retrieve the uploaded file. Check that the Blob store is connected and the file was uploaded successfully.",
           },
           { status: 422 }
         );
       }
     } else if (file && file instanceof Blob) {
-      // Direct upload (small files only; Vercel rejects > 4.5 MB before we get here)
       const maxBytes = 4.5 * 1024 * 1024;
       if (file.size > maxBytes) {
         return NextResponse.json(
