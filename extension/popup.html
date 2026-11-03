@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      width: 280px;
+      margin: 0;
+      padding: 16px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      color: #1c1917;
+      background: #fafaf9;
+    }
+    h1 { font-size: 15px; margin: 0 0 8px; font-weight: 650; }
+    p { margin: 0 0 12px; color: #57534e; line-height: 1.4; }
+    button {
+      width: 100%;
+      padding: 8px 12px;
+      background: #1c1917;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #292524; }
+    .hint { font-size: 11px; color: #a8a29e; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>PostMeet</h1>
+  <p>Open a YouTube video, then click the <strong>Transcribe with PostMeet</strong> button under the title.</p>
+  <button id="open">Open PostMeet</button>
+  <div class="hint">Works best on public YouTube videos you can play.</div>
+  <script src="popup.js"></script>
+</body>
+</html>
