@@ -93,7 +93,7 @@ export default function Home() {
         setStatusType("info");
 
         const blob = await upload(file.name, file, {
-          access: "public",
+          access: "private",
           handleUploadUrl: "/api/blob/upload",
         });
 
