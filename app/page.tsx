@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, FormEvent, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import {
   buildMeetingHtml,
@@ -37,6 +37,15 @@ export default function Home() {
 
   const [transcript, setTranscript] = useState<TranscriptResult | null>(null);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+
+  // Pre-fill from ?youtube= when opened by the extension
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const yt = params.get("youtube");
+    if (yt && extractYoutubeId(yt)) {
+      setYoutubeUrl(yt);
+    }
+  }, []);
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     if (e.target.files?.[0]) {
